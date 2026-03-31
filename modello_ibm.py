@@ -12,7 +12,7 @@ import numpy as np
 
 # ==========================================
 # 1. DOWNLOAD E LETTURA DEL DATASET
-# ==========================================
+
 print("Scaricamento del dataset da Kaggle in corso...")
 path = kagglehub.dataset_download("pavansubhasht/ibm-hr-analytics-attrition-dataset")
 file_csv = [f for f in os.listdir(path) if f.endswith('.csv')][0]
@@ -21,10 +21,13 @@ dataset = pd.read_csv(percorso_completo)
 
 # ==========================================
 # 2. PULIZIA E SPLIT DEI DATI (NUOVO)
-# ==========================================
+
+# La colonna da prevedere è 'Attrition' (Sì/No). La trasformiamo in 1 (Sì) e 0 (No)
 dataset['Attrition'] = dataset['Attrition'].map({'Yes': 1, 'No': 0})
 y_numpy = dataset['Attrition'].values
 dataset = dataset.drop(['Attrition', 'EmployeeCount', 'EmployeeNumber', 'Over18', 'StandardHours'], axis=1)
+
+#ENCODING FEATURES get_dummies trasforma tutte le colonne di testo (es. Genere, Ruolo) in numeri (0 e 1)
 dataset = pd.get_dummies(dataset, drop_first=True)
 X_numpy = dataset.values
 
@@ -36,7 +39,7 @@ X_train_np, X_temp, y_train_np, y_temp = train_test_split(X_numpy, y_numpy, test
 # 2. Dividiamo il "temp" (30%) a metà, ottenendo Validation (15%) e Test (15%)
 X_val_np, X_test_np, y_val_np, y_test_np = train_test_split(X_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp)
 
-# Normalizziamo (Calcoliamo lo scaler SOLO sul Train!)
+# SCALING FEATURES Normalizziamo (Calcoliamo lo scaler SOLO sul Train!)
 scaler = StandardScaler()
 X_train_scalati = scaler.fit_transform(X_train_np)
 X_val_scalati = scaler.transform(X_val_np)
@@ -54,7 +57,7 @@ y_test = torch.tensor(y_test_np, dtype=torch.float32).view(-1, 1)
 
 # ==========================================
 # 3. IL MODELLO E IL PESO
-# ==========================================
+
 numero_di_features = X_train.shape[1]
 
 class ReteAziendale(nn.Module):
@@ -72,6 +75,7 @@ class ReteAziendale(nn.Module):
         x = self.strato_3(x)
         return x
 
+
 modello = ReteAziendale()
 
 # Ricalcoliamo i pesi solo sul set di Training
@@ -82,7 +86,6 @@ ottimizzatore = optim.Adam(modello.parameters(), lr=0.001)
 
 # ==========================================
 # 4. ADDESTRAMENTO CON VALIDATION (AGGIORNATO)
-# ==========================================
 epoche = 150
 loss_train_lista = []
 loss_val_lista = []
@@ -110,8 +113,8 @@ for epoca in range(epoche):
         print(f'Epoca [{epoca+1}/{epoche}], Train Loss: {loss_train.item():.4f}, Val Loss: {loss_val.item():.4f}')
 
 # ==========================================
-# 5. VALUTAZIONE FINALE SUL TEST SET INVISIBILE
-# ==========================================
+# 5. VALUTAZIONE FINALE SUL TEST SET 
+
 modello.eval()
 with torch.no_grad():
     logits_test = modello(X_test)
@@ -120,12 +123,12 @@ with torch.no_grad():
 valori_reali_test = y_test.numpy()
 predizioni_finali_test = (probabilita_test > 0.5).astype(int)
 
+#ACCURATEZZA 
 accuracy_test = (predizioni_finali_test == valori_reali_test).sum() / len(valori_reali_test)
 print(f"\n--- Accuratezza sul TEST SET (dati mai visti): {accuracy_test*100:.2f}% ---")
 
 # ==========================================
 # 6. GRAFICI
-# ==========================================
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
 # Grafico Loss: Confrontiamo Train e Val
