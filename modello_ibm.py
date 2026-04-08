@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split # <-- NUOVO IMPORT
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, precision_score, recall_score, f1_score
 import pandas as pd
 import kagglehub
 import os
@@ -32,20 +32,20 @@ dataset = pd.get_dummies(dataset, drop_first=True)
 X_numpy = dataset.values
 
 # --- DIVISIONE IN TRAIN, VAL E TEST ---
-# 1. Separiamo il Training Set (70%) dal resto (30%)
-# Usiamo stratify=y_numpy per assicurarci che la percentuale di dimissioni sia uguale in tutti i gruppi
+# 1. Separare il Training Set (70%) dal resto (30%)
+# Usare stratify=y_numpy per assicurarsi che la percentuale di dimissioni sia uguale in tutti i gruppi
 X_train_np, X_temp, y_train_np, y_temp = train_test_split(X_numpy, y_numpy, test_size=0.30, random_state=42, stratify=y_numpy)
 
-# 2. Dividiamo il "temp" (30%) a metà, ottenendo Validation (15%) e Test (15%)
+# 2. Dividere il "temp" (30%) a metà, ottenendo Validation (15%) e Test (15%)
 X_val_np, X_test_np, y_val_np, y_test_np = train_test_split(X_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp)
 
-# SCALING FEATURES Normalizziamo (Calcoliamo lo scaler SOLO sul Train!)
+# SCALING FEATURES Normalizzare (Calcolare lo scaler SOLO sul Train, per non intaccare accuratezza, precisone...)
 scaler = StandardScaler()
 X_train_scalati = scaler.fit_transform(X_train_np)
 X_val_scalati = scaler.transform(X_val_np)
 X_test_scalati = scaler.transform(X_test_np)
 
-# Convertiamo in tensori PyTorch
+# Convertire in tensori PyTorch
 X_train = torch.tensor(X_train_scalati, dtype=torch.float32)
 y_train = torch.tensor(y_train_np, dtype=torch.float32).view(-1, 1)
 
@@ -78,22 +78,22 @@ class ReteAziendale(nn.Module):
 
 modello = ReteAziendale()
 
-# Ricalcoliamo i pesi solo sul set di Training
-moltiplicatore = (y_train_np == 0).sum() / (y_train_np == 1).sum()
-peso_positivi = torch.tensor([moltiplicatore], dtype=torch.float32)
-criterio = nn.BCEWithLogitsLoss(pos_weight=peso_positivi) 
+# Ricalcolare i pesi solo sul set di Training
+moltiplicatore = (y_train_np == 0).sum() / (y_train_np == 1).sum()  # dipendenti rimasti(0) / dipendenti licenziati(1) 
+peso_positivi = torch.tensor([moltiplicatore], dtype=torch.float32) # il peso ottenuto trasformato in tensore 
+criterio = nn.BCEWithLogitsLoss(pos_weight=peso_positivi) # peso passato alla loss function 
 ottimizzatore = optim.Adam(modello.parameters(), lr=0.001)
 
 # ==========================================
-# 4. ADDESTRAMENTO CON VALIDATION (AGGIORNATO)
-epoche = 150
+# 4. ADDESTRAMENTO CON VALIDATION 
+epoche = 300
 loss_train_lista = []
 loss_val_lista = []
 
 print("Inizio dell'addestramento...")
 for epoca in range(epoche):
     # --- FASE DI TRAINING ---
-    modello.train() # Diciamo a PyTorch che stiamo addestrando
+    modello.train() # Dire a PyTorch che si sta addestrando
     ottimizzatore.zero_grad() 
     previsioni_train = modello(X_train)
     loss_train = criterio(previsioni_train, y_train)
@@ -101,8 +101,8 @@ for epoca in range(epoche):
     ottimizzatore.step()
     
     # --- FASE DI VALIDATION ---
-    modello.eval() # Diciamo a PyTorch che stiamo solo testando
-    with torch.no_grad(): # Spegniamo il calcolo dei gradienti per risparmiare memoria
+    modello.eval() # Dire a PyTorch che si sta testando
+    with torch.no_grad(): # Spegnere il calcolo dei gradienti per risparmiare memoria
         previsioni_val = modello(X_val)
         loss_val = criterio(previsioni_val, y_val)
     
@@ -118,14 +118,26 @@ for epoca in range(epoche):
 modello.eval()
 with torch.no_grad():
     logits_test = modello(X_test)
+    #trasformare i logits in intervallo 0-1 (sigmoid)
     probabilita_test = torch.sigmoid(logits_test).detach().numpy()
     
 valori_reali_test = y_test.numpy()
+# Impostare una soglia di classificazione (0.5)
 predizioni_finali_test = (probabilita_test > 0.5).astype(int)
 
-#ACCURATEZZA 
-accuracy_test = (predizioni_finali_test == valori_reali_test).sum() / len(valori_reali_test)
-print(f"\n--- Accuratezza sul TEST SET (dati mai visti): {accuracy_test*100:.2f}% ---")
+#ACCURATEZZA [classificazioni corrette / totale classificazoni]
+accuracy_test = accuracy_score(valori_reali_test, predizioni_finali_test)
+#PRECISIONE [veri positivi / veri positivi + falsi positivi]
+precisione = precision_score(valori_reali_test, predizioni_finali_test, zero_division=0)
+#RECALL [veri positivi / veri positivi + falsi negativi] [percentuale veri positivi]
+richiamo = recall_score(valori_reali_test, predizioni_finali_test, zero_division=0)
+#F1-SCORE [media armonica di precisione e richiamo] [2 * ((precision * recall) / (precison + recall))]
+f1 = f1_score(valori_reali_test, predizioni_finali_test, zero_division=0)
+print(f"\nPUNTEGGI METRICHE DI VALUTAZIONE SUL TEST SET")
+print(f"\n--- Accuratezza: {accuracy_test*100:.2f}% ")
+print(f"\n--- Precisione:  {precisione*100:.2f}%")
+print(f"\n--- Recall:  {richiamo*100:.2f}%")
+print(f"\n--- F1-Score:  {f1*100:.2f}%")
 
 # ==========================================
 # 6. GRAFICI
@@ -140,7 +152,7 @@ ax1.set_ylabel("Loss")
 ax1.legend()
 ax1.grid(True, linestyle='--', alpha=0.6)
 
-# Matrice di Confusione sul TEST SET
+# Confusion Matrix sul TEST SET
 matrice = confusion_matrix(valori_reali_test, predizioni_finali_test)
 grafico_matrice = ConfusionMatrixDisplay(confusion_matrix=matrice, display_labels=['Rimasto (0)', 'Licenziato (1)'])
 grafico_matrice.plot(cmap=plt.cm.Blues, ax=ax2)
