@@ -201,36 +201,35 @@ plt.show()
 # ==========================================
 print("\nCalcolo dei valori SHAP in corso (potrebbe richiedere qualche secondo)...")
 
-# 7.1 Creiamo la funzione wrapper per SHAP
+# 7.1 Creare la funzione wrapper per SHAP
 def predici_probabilita_shap(x_numpy):
     modello.eval()
-    with torch.no_grad(): # Niente gradienti, serve solo per test
+    with torch.no_grad():
         x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
         logits = modello(x_tensor)
-        # Trasformiamo in probabilità e convertiamo in array numpy 1D
+        # Trasformare in probabilità e converitre in array numpy 1D
         probabilita = torch.sigmoid(logits).numpy().flatten()
     return probabilita
 
-# Usiamo un campione del set di addestramento (es. 100 istanze) come "background" 
+# Usare un campione del set di addestramento (es. 100 istanze) come "background" 
 # per definire i valori di base (baseline) e velocizzare il calcolo.
 background = X_train_scalati[:100]
 
-# Inizializziamo l'Explainer di SHAP usando il nostro wrapper model-agnostic
+# Inizializzare l'Explainer di SHAP usando il wrapper model-agnostic
 explainer_shap = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
 
-# Calcoliamo i valori SHAP per il set di test (limitiamo a 100 campioni per velocità, 
-# ma puoi mettere X_test_scalati intero se hai tempo di calcolo)
+# Calcolare i valori SHAP per il set di test (limitiamo a 100 campioni per velocità, X_test_scalati intero se si ha tempo di calcolo)
 shap_values = explainer_shap(X_test_scalati[:100])
 
 # --- VISUALIZZAZIONE GLOBALE SHAP ---
 print("\nGenerazione del grafico SHAP Globale (Beeswarm)...")
 plt.figure(figsize=(10, 6))
-# Il Beeswarm plot mostra l'impatto di ogni feature su tutte le predizioni del test set.
+# Il BEESWARM plot mostra l'impatto di ogni feature su tutte le predizioni del test set.
 # I colori rosso/blu indicano se il valore originale della feature era alto o basso.
 shap.plots.beeswarm(shap_values, show=False)
 plt.title("SHAP: Importanza Globale delle Features")
 plt.tight_layout()
-#plt.show()
+plt.show()
 
 # ---  BAR PLOT GLOBALE ---
 #print("\nGenerazione del Bar Plot Globale SHAP...")
@@ -241,7 +240,7 @@ plt.tight_layout()
 #plt.show()
 
 # ---  SCATTER / DEPENDENCE PLOT LOCALE ---
-# Scegliamo una colonna specifica usando il suo indice o il nome. 
+# Scegliere una colonna specifica usando il suo indice o il nome. 
 # Mettiamo '0' per prendere la prima feature (es. 'Age') come esempio.
 #print("\nGenerazione dello Scatter Plot per la prima variabile...")
 #plt.figure()
@@ -251,7 +250,7 @@ plt.tight_layout()
 #plt.show()
 
 # --- VISUALIZZAZIONE LOCALE SHAP (WATERFALL PLOT) ---
-# Analizziamo un singolo dipendente (il primo del test set, indice 0)
+# Analisi di un singolo dipendente (il primo del test set, indice 0)
 print("\nGenerazione del grafico SHAP Locale (Waterfall) per la prima istanza...")
 plt.figure()
 # Il Waterfall plot parte dal valore di base (media) e mostra come ogni variabile 
@@ -267,7 +266,7 @@ plt.show()
 # ==========================================
 print("\nCalcolo delle spiegazioni LIME in corso...")
 
-# 8.1 Creiamo la funzione wrapper per LIME
+# 8.1 Crere la funzione wrapper per LIME
 # ATTENZIONE: LIME per la classificazione binaria richiede che l'output sia una matrice 
 # con 2 colonne: [probabilità_classe_0, probabilità_classe_1]
 def predici_probabilita_lime(x_numpy):
@@ -277,10 +276,10 @@ def predici_probabilita_lime(x_numpy):
         logits = modello(x_tensor)
         prob_classe_1 = torch.sigmoid(logits).numpy()
         prob_classe_0 = 1.0 - prob_classe_1
-        # Uniamo le due probabilità affiancandole
+        # Unire le due probabilità affiancandole
         return np.hstack((prob_classe_0, prob_classe_1))
 
-# Inizializziamo l'explainer di LIME addestrandolo sui dati di training (scalati)
+# Inizializzare l'explainer di LIME addestrandolo sui dati di training (scalati)
 explainer_lime = lime.lime_tabular.LimeTabularExplainer(
     training_data=X_train_scalati,
     feature_names=nomi_features,
@@ -290,16 +289,16 @@ explainer_lime = lime.lime_tabular.LimeTabularExplainer(
 )
 
 # --- VISUALIZZAZIONE LOCALE LIME ---
-# Generiamo la spiegazione per lo stesso dipendente di prima (indice 0 del Test Set)
+# Generare la spiegazione per lo stesso dipendente di prima (indice 0 del Test Set)
 indice_da_spiegare = 0
 
 spiegazione_lime = explainer_lime.explain_instance(
     data_row=X_test_scalati[indice_da_spiegare], 
     predict_fn=predici_probabilita_lime,
-    num_features=10 # Mostriamo solo le 10 features più rilevanti per questo dipendente
+    num_features=10 # Mostrare solo le 10 features più rilevanti per questo dipendente
 )
 
-# Creiamo il grafico
+# grafico LIME
 fig_lime = spiegazione_lime.as_pyplot_figure()
 plt.title(f"LIME: Spiegazione Locale (Istanza {indice_da_spiegare})")
 plt.tight_layout()
@@ -313,4 +312,3 @@ print(f"Classe Reale: {int(y_test_np[indice_da_spiegare].item())}")
 nome_file_html = f"spiegazione_lime_dipendente_{indice_da_spiegare}.html"
 spiegazione_lime.save_to_file(nome_file_html)
 print(f"\n✅ Report LIME interattivo salvato con successo nel file: {nome_file_html}")
-# Ora potrai aprire questo file facendo doppio clic dal tuo computer!

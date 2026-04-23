@@ -1,6 +1,6 @@
 #  IBM HR Analytics: Previsione Dimissioni con Rete Neurale (PyTorch)
 
-Questo progetto utilizza il Deep Learning per affrontare un problema classico di Risorse Umane: prevedere se un dipendente lascerà l'azienda (Attrition) basandosi sui suoi dati lavorativi e anagrafici. Il progetto utilizza il celebre dataset "IBM HR Analytics Employee Attrition & Performance".
+Questo progetto implementa un modello di Deep Learning per prevedere l'attrition (dimissioni) dei dipendenti usando il dataset IBM HR Analytics. Include addestramento con early stopping, valutazione completa e tecnice di Explainable AI con SHAP e LIME.
 
 Il modello è una **Rete Neurale Artificiale (ANN)** in PyTorch per una classificazione binaria (0 = Rimasto, 1 = Licenziato).
 
@@ -15,6 +15,13 @@ Il modello è una **Rete Neurale Artificiale (ANN)** in PyTorch per una classifi
 
 * **Gestione dello Sbilanciamento delle Classi:** Dato che i dipendenti dimissionari sono una minoranza, la funzione di costo (`BCEWithLogitsLoss`) include un **peso proporzionale (`pos_weight`)**. Questo costringe la rete a penalizzare maggiormente i falsi negativi (i dimissionari non individuati).
 
+* **Early Stopping**: Ferma l'addestramento quando il modello smette di migliorare per evitare l'overfitting.
+
+* **Explainable AI**:
+    - **SHAP**: Visualizzazione dell'impatto delle feature a livello globale (Beeswarm, Bar Plot) e locale (Waterfall Scatter plot).
+
+    - **LIME**: Spiegazione locale della singola predizione con esportazione in report HTML.
+
 ##  Architettura del Modello
 
 La rete neurale è composta da tre strati lineari (Fully Connected):
@@ -23,6 +30,18 @@ La rete neurale è composta da tre strati lineari (Fully Connected):
 3. **Hidden Layer 2 -> Output Layer:** 1 neurone (Output Logit elaborato internamente dalla Loss function).
 
 L'ottimizzazione è gestita tramite **Adam** con un Learning Rate di `0.001`.
+
+## Metriche di valutazione
+
+Lo script produrrà in output le metriche di valutazione sul Test Set (dati mai visti dal modello):
+
+* **Accuratezza:** Percentuale di predizioni corrette.
+
+* **Precisione:** Capacità di non classificare come "licenziato" un dipendente che resta.
+
+* **Recall (Richiamo):** Capacità di scovare effettivamente chi se ne andrà (fondamentale in HR).
+
+* **F1-Score:** Media armonica tra Precisione e Recall.
 
 ##  Come eseguire il progetto
 
