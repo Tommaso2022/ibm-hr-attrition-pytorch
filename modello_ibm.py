@@ -10,25 +10,29 @@ import kagglehub
 import os
 import numpy as np
 
+import shap
+import lime.lime_tabular
+
 # ==========================================
 # 1. DOWNLOAD E LETTURA DEL DATASET
 
-print("Scaricamento del dataset da Kaggle in corso...")
+print("Scaricamento del dataset da Kagglehub in corso...")
 path = kagglehub.dataset_download("pavansubhasht/ibm-hr-analytics-attrition-dataset")
 file_csv = [f for f in os.listdir(path) if f.endswith('.csv')][0]
 percorso_completo = os.path.join(path, file_csv)
 dataset = pd.read_csv(percorso_completo)
 
 # ==========================================
-# 2. PULIZIA E SPLIT DEI DATI (NUOVO)
+# 2. PULIZIA E SPLIT DEI DATI
 
-# La colonna da prevedere è 'Attrition' (Sì/No). La trasformiamo in 1 (Sì) e 0 (No)
+# La colonna da prevedere è 'Attrition' (Sì/No). Trasformare in 1 (Sì) e 0 (No)
 dataset['Attrition'] = dataset['Attrition'].map({'Yes': 1, 'No': 0})
 y_numpy = dataset['Attrition'].values
 dataset = dataset.drop(['Attrition', 'EmployeeCount', 'EmployeeNumber', 'Over18', 'StandardHours'], axis=1)
 
 #ENCODING FEATURES get_dummies trasforma tutte le colonne di testo (es. Genere, Ruolo) in numeri (0 e 1)
 dataset = pd.get_dummies(dataset, drop_first=True)
+nomi_features = dataset.columns.tolist()    #SHAP e LIME 
 X_numpy = dataset.values
 
 # --- DIVISIONE IN TRAIN, VAL E TEST ---
@@ -90,7 +94,13 @@ epoche = 300
 loss_train_lista = []
 loss_val_lista = []
 
-print("Inizio dell'addestramento...")
+# --- VARIABILI PER L'EARLY STOPPING ---
+pazienza = 20                           # Quante epoche aspettare senza miglioramenti prima di fermarsi
+miglior_loss_val = float('inf')         # Inizializziamo il record all'infinito
+epoche_senza_miglioramenti = 0          # Contatore
+migliori_pesi = None                    # Qui salveremo la "fotografia" del modello perfetto
+
+print("Inizio dell'addestramento")
 for epoca in range(epoche):
     # --- FASE DI TRAINING ---
     modello.train() # Dire a PyTorch che si sta addestrando
@@ -106,11 +116,36 @@ for epoca in range(epoche):
         previsioni_val = modello(X_val)
         loss_val = criterio(previsioni_val, y_val)
     
-    loss_train_lista.append(loss_train.item())
-    loss_val_lista.append(loss_val.item())
+    loss_train_corrente = loss_train.item()
+    loss_val_corrente = loss_val.item()
+    loss_train_lista.append(loss_train_corrente)
+    loss_val_lista.append(loss_val_corrente)    
+    
+    # --- LOGICA DELL'EARLY STOPPING ---
+    # 1. Se la loss attuale è un nuovo record assoluto...
+    if loss_val_corrente < miglior_loss_val:
+        miglior_loss_val = loss_val_corrente       # Aggiorna il record
+        epoche_senza_miglioramenti = 0             # Azzera il contatore
+        migliori_pesi = modello.state_dict()       # Fotografa e salva i "cervelli" della rete
+    
+    # 2. Se invece la loss non è migliorata...
+    else:
+        epoche_senza_miglioramenti += 1            # Aggiungi un segno di spunta al contatore della pazienza
+        
+        # 3. Se la pazienza è finita, interrompi il ciclo!
+        if epoche_senza_miglioramenti >= pazienza:
+            print(f"\n⏹️ EARLY STOPPING ATTIVATO! L'addestramento si è fermato all'epoca {epoca+1}.")
+            print(f"La Validation Loss non migliorava da {pazienza} epoche.")
+            break # Questo comando "rompe" il ciclo for e lo fa finire in anticipo
     
     if (epoca + 1) % 20 == 0:
         print(f'Epoca [{epoca+1}/{epoche}], Train Loss: {loss_train.item():.4f}, Val Loss: {loss_val.item():.4f}')
+        
+    # --- RIPRISTINO DEL MODELLO MIGLIORE ---
+    # Fondamentale! Se non facciamo questo, il modello testerà l'ultima epoca (quella peggiorata).
+    # Noi vogliamo che usi i pesi salvati quando la loss era al suo minimo storico.
+modello.load_state_dict(migliori_pesi)
+print(f"\n✅ Modello ripristinato ai pesi ottimali (Miglior Val Loss: {miglior_loss_val:.4f}). Pronto per il Test!")
 
 # ==========================================
 # 5. VALUTAZIONE FINALE SUL TEST SET 
@@ -160,3 +195,122 @@ ax2.set_title("Matrice di Confusione (Test Set)")
 
 plt.tight_layout()
 plt.show()
+
+# ==========================================
+# 7. EXPLAINABLE AI: SHAP
+# ==========================================
+print("\nCalcolo dei valori SHAP in corso (potrebbe richiedere qualche secondo)...")
+
+# 7.1 Creiamo la funzione wrapper per SHAP
+def predici_probabilita_shap(x_numpy):
+    modello.eval()
+    with torch.no_grad(): # Niente gradienti, serve solo per test
+        x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
+        logits = modello(x_tensor)
+        # Trasformiamo in probabilità e convertiamo in array numpy 1D
+        probabilita = torch.sigmoid(logits).numpy().flatten()
+    return probabilita
+
+# Usiamo un campione del set di addestramento (es. 100 istanze) come "background" 
+# per definire i valori di base (baseline) e velocizzare il calcolo.
+background = X_train_scalati[:100]
+
+# Inizializziamo l'Explainer di SHAP usando il nostro wrapper model-agnostic
+explainer_shap = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
+
+# Calcoliamo i valori SHAP per il set di test (limitiamo a 100 campioni per velocità, 
+# ma puoi mettere X_test_scalati intero se hai tempo di calcolo)
+shap_values = explainer_shap(X_test_scalati[:100])
+
+# --- VISUALIZZAZIONE GLOBALE SHAP ---
+print("\nGenerazione del grafico SHAP Globale (Beeswarm)...")
+plt.figure(figsize=(10, 6))
+# Il Beeswarm plot mostra l'impatto di ogni feature su tutte le predizioni del test set.
+# I colori rosso/blu indicano se il valore originale della feature era alto o basso.
+shap.plots.beeswarm(shap_values, show=False)
+plt.title("SHAP: Importanza Globale delle Features")
+plt.tight_layout()
+#plt.show()
+
+# ---  BAR PLOT GLOBALE ---
+#print("\nGenerazione del Bar Plot Globale SHAP...")
+#plt.figure()
+#shap.plots.bar(shap_values, show=False)
+#plt.title("SHAP: Importanza Media Assoluta")
+#plt.tight_layout()
+#plt.show()
+
+# ---  SCATTER / DEPENDENCE PLOT LOCALE ---
+# Scegliamo una colonna specifica usando il suo indice o il nome. 
+# Mettiamo '0' per prendere la prima feature (es. 'Age') come esempio.
+#print("\nGenerazione dello Scatter Plot per la prima variabile...")
+#plt.figure()
+#shap.plots.scatter(shap_values[:, 0], show=False)
+#plt.title(f"SHAP: Impatto della variabile '{nomi_features[0]}'")
+#plt.tight_layout()
+#plt.show()
+
+# --- VISUALIZZAZIONE LOCALE SHAP (WATERFALL PLOT) ---
+# Analizziamo un singolo dipendente (il primo del test set, indice 0)
+print("\nGenerazione del grafico SHAP Locale (Waterfall) per la prima istanza...")
+plt.figure()
+# Il Waterfall plot parte dal valore di base (media) e mostra come ogni variabile 
+# "spinge" la probabilità in alto (rosso) o in basso (blu) per questo specifico utente.
+shap.plots.waterfall(shap_values[0], show=False)
+plt.title("SHAP: Spiegazione Locale (Istanza 0)")
+plt.tight_layout()
+plt.show()
+
+
+# ==========================================
+# 8. EXPLAINABLE AI: LIME
+# ==========================================
+print("\nCalcolo delle spiegazioni LIME in corso...")
+
+# 8.1 Creiamo la funzione wrapper per LIME
+# ATTENZIONE: LIME per la classificazione binaria richiede che l'output sia una matrice 
+# con 2 colonne: [probabilità_classe_0, probabilità_classe_1]
+def predici_probabilita_lime(x_numpy):
+    modello.eval()
+    with torch.no_grad():
+        x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
+        logits = modello(x_tensor)
+        prob_classe_1 = torch.sigmoid(logits).numpy()
+        prob_classe_0 = 1.0 - prob_classe_1
+        # Uniamo le due probabilità affiancandole
+        return np.hstack((prob_classe_0, prob_classe_1))
+
+# Inizializziamo l'explainer di LIME addestrandolo sui dati di training (scalati)
+explainer_lime = lime.lime_tabular.LimeTabularExplainer(
+    training_data=X_train_scalati,
+    feature_names=nomi_features,
+    class_names=['Rimasto', 'Licenziato'],
+    mode='classification',
+    random_state=42
+)
+
+# --- VISUALIZZAZIONE LOCALE LIME ---
+# Generiamo la spiegazione per lo stesso dipendente di prima (indice 0 del Test Set)
+indice_da_spiegare = 0
+
+spiegazione_lime = explainer_lime.explain_instance(
+    data_row=X_test_scalati[indice_da_spiegare], 
+    predict_fn=predici_probabilita_lime,
+    num_features=10 # Mostriamo solo le 10 features più rilevanti per questo dipendente
+)
+
+# Creiamo il grafico
+fig_lime = spiegazione_lime.as_pyplot_figure()
+plt.title(f"LIME: Spiegazione Locale (Istanza {indice_da_spiegare})")
+plt.tight_layout()
+plt.show()
+
+# Stampa testuale di LIME
+print(f"\nProbabilità predetta per l'istanza {indice_da_spiegare}: {predici_probabilita_lime(X_test_scalati[[indice_da_spiegare]])[0][1]*100:.2f}% (Licenziato)")
+print(f"Classe Reale: {int(y_test_np[indice_da_spiegare].item())}")
+
+# --- ESPORTAZIONE LIME IN HTML ---
+nome_file_html = f"spiegazione_lime_dipendente_{indice_da_spiegare}.html"
+spiegazione_lime.save_to_file(nome_file_html)
+print(f"\n✅ Report LIME interattivo salvato con successo nel file: {nome_file_html}")
+# Ora potrai aprire questo file facendo doppio clic dal tuo computer!
