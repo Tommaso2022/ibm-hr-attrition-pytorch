@@ -52,4 +52,4 @@ Lo script produrrà in output le metriche di valutazione sul Test Set (dati mai 
 3. Esegui lo script principale:
     python modello_ibm.py
 
-![Loss](/Users/tommaso/Desktop/loss_plot.png)
+![Loss](Plot/loss_plot.png)
