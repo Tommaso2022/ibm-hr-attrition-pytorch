@@ -122,7 +122,7 @@ for epoca in range(epoche):
     loss_val_lista.append(loss_val_corrente)    
     
     # --- LOGICA DELL'EARLY STOPPING ---
-    # 1. Se la loss attuale è un nuovo record assoluto...
+    # Se la loss attuale è un nuovo record assoluto...
     if loss_val_corrente < miglior_loss_val:
         miglior_loss_val = loss_val_corrente       # Aggiorna il record
         epoche_senza_miglioramenti = 0             # Azzera il contatore
@@ -131,7 +131,7 @@ for epoca in range(epoche):
     else:
         epoche_senza_miglioramenti += 1            
         
-        # 3. Se la pazienza è finita, interrompere il ciclo
+        # Se il limite è suprato, interrompere il ciclo
         if epoche_senza_miglioramenti >= limite_max:
             print(f"\nEARLY STOPPING ATTIVATO! L'addestramento si è fermato all'epoca {epoca+1}.")
             print(f"La Validation Loss non migliorava da {limite_max} epoche.")
