@@ -32,7 +32,7 @@ dataset = dataset.drop(['Attrition', 'EmployeeCount', 'EmployeeNumber', 'Over18'
 
 #ENCODING FEATURES get_dummies trasforma tutte le colonne di testo (es. Genere, Ruolo) in numeri (0 e 1)
 dataset = pd.get_dummies(dataset, drop_first=True)
-nomi_features = dataset.columns.tolist()    #SHAP e LIME 
+nomi_features = dataset.columns.tolist()    # Utile a calcolare i valori di SHAP e LIME 
 X_numpy = dataset.values
 
 # --- DIVISIONE IN TRAIN, VAL E TEST ---
@@ -95,10 +95,10 @@ loss_train_lista = []
 loss_val_lista = []
 
 # --- VARIABILI PER L'EARLY STOPPING ---
-pazienza = 20                           # Quante epoche aspettare senza miglioramenti prima di fermarsi
+limite_max = 20                           # Quante epoche aspettare senza miglioramenti prima di fermarsi
 miglior_loss_val = float('inf')         # Inizializziamo il record all'infinito
 epoche_senza_miglioramenti = 0          # Contatore
-migliori_pesi = None                    # Qui salveremo la "fotografia" del modello perfetto
+migliori_pesi = None                    # "Fotografia" del modello perfetto
 
 print("Inizio dell'addestramento")
 for epoca in range(epoche):
@@ -132,16 +132,16 @@ for epoca in range(epoche):
         epoche_senza_miglioramenti += 1            
         
         # 3. Se la pazienza è finita, interrompere il ciclo
-        if epoche_senza_miglioramenti >= pazienza:
+        if epoche_senza_miglioramenti >= limite_max:
             print(f"\nEARLY STOPPING ATTIVATO! L'addestramento si è fermato all'epoca {epoca+1}.")
-            print(f"La Validation Loss non migliorava da {pazienza} epoche.")
+            print(f"La Validation Loss non migliorava da {limite_max} epoche.")
             break 
     
     if (epoca + 1) % 20 == 0:
         print(f'Epoca [{epoca+1}/{epoche}], Train Loss: {loss_train.item():.4f}, Val Loss: {loss_val.item():.4f}')
         
     # --- RIPRISTINO DEL MODELLO MIGLIORE ---
-    #Il modello deve usare i pesi salvati quando la loss era al suo minimo storico, altrimenti il modello testerà l'ultima epoca (quella peggiorata).
+    #Il modello deve usare i pesi salvati quando la loss era al suo minimo storico, altrimenti testerà l'ultima epoca (quella peggiorata).
 modello.load_state_dict(migliori_pesi)
 print(f"\n Modello ripristinato ai pesi ottimali (Miglior Val Loss: {miglior_loss_val:.4f}). Pronto per il Test!")
 
@@ -199,7 +199,7 @@ plt.show()
 
 print("\nCalcolo dei valori SHAP in corso...")
 
-# 7.1 Creare la funzione wrapper per SHAP
+# Creare la funzione wrapper per SHAP
 def predici_probabilita_shap(x_numpy):
     modello.eval()
     with torch.no_grad():
@@ -210,7 +210,7 @@ def predici_probabilita_shap(x_numpy):
     return probabilita
 
 # Usare un campione del set di addestramento (es. 100 istanze) come "background" 
-# per definire i valori di base (baseline) e velocizzare il calcolo.
+# Per definire i valori di base (baseline) e velocizzare il calcolo.
 background = X_train_scalati[:100]
 
 # Inizializzare l'Explainer di SHAP usando il wrapper model-agnostic
@@ -252,7 +252,7 @@ plt.show()
 print("\nGenerazione del grafico SHAP Locale (Waterfall) per la prima istanza...")
 plt.figure()
 # Il Waterfall plot parte dal valore di base (media) e mostra come ogni variabile 
-# "spinge" la probabilità in alto (rosso) o in basso (blu) per questo specifico utente.
+# "Spinge" la probabilità in alto (rosso) o in basso (blu) per questo specifico utente.
 shap.plots.waterfall(shap_values[0], show=False)
 plt.title("SHAP: Spiegazione Locale (Istanza 0)")
 plt.tight_layout()
@@ -264,9 +264,9 @@ plt.show()
 
 print("\nCalcolo delle spiegazioni LIME in corso...")
 
-# 8.1 Crere la funzione wrapper per LIME
+# Crere la funzione wrapper per LIME
 # LIME per la classificazione binaria richiede che l'output sia una matrice 
-# con 2 colonne: [probabilità_classe_0, probabilità_classe_1]
+# Con 2 colonne: [probabilità_classe_0, probabilità_classe_1]
 def predici_probabilita_lime(x_numpy):
     modello.eval()
     with torch.no_grad():
