@@ -53,3 +53,6 @@ Lo script produrrà in output le metriche di valutazione sul Test Set (dati mai 
     python modello_ibm.py
 
 ![Loss](Plot/loss_plot.png)
+![Shap Globale(Beeswarm)](Plot/global_shap_plot.png)
+![Shap Locale(Waterfall)](Plot/local_shap_plot.png)
+![Lime Locale](Plot/local_lime_plot.png)
