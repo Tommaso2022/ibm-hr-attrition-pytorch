@@ -128,24 +128,22 @@ for epoca in range(epoche):
         epoche_senza_miglioramenti = 0             # Azzera il contatore
         migliori_pesi = modello.state_dict()       # Fotografa e salva i "cervelli" della rete
     
-    # 2. Se invece la loss non è migliorata...
     else:
-        epoche_senza_miglioramenti += 1            # Aggiungi un segno di spunta al contatore della pazienza
+        epoche_senza_miglioramenti += 1            
         
-        # 3. Se la pazienza è finita, interrompi il ciclo!
+        # 3. Se la pazienza è finita, interrompere il ciclo
         if epoche_senza_miglioramenti >= pazienza:
-            print(f"\n⏹️ EARLY STOPPING ATTIVATO! L'addestramento si è fermato all'epoca {epoca+1}.")
+            print(f"\nEARLY STOPPING ATTIVATO! L'addestramento si è fermato all'epoca {epoca+1}.")
             print(f"La Validation Loss non migliorava da {pazienza} epoche.")
-            break # Questo comando "rompe" il ciclo for e lo fa finire in anticipo
+            break 
     
     if (epoca + 1) % 20 == 0:
         print(f'Epoca [{epoca+1}/{epoche}], Train Loss: {loss_train.item():.4f}, Val Loss: {loss_val.item():.4f}')
         
     # --- RIPRISTINO DEL MODELLO MIGLIORE ---
-    # Fondamentale! Se non facciamo questo, il modello testerà l'ultima epoca (quella peggiorata).
-    # Noi vogliamo che usi i pesi salvati quando la loss era al suo minimo storico.
+    #Il modello deve usare i pesi salvati quando la loss era al suo minimo storico, altrimenti il modello testerà l'ultima epoca (quella peggiorata).
 modello.load_state_dict(migliori_pesi)
-print(f"\n✅ Modello ripristinato ai pesi ottimali (Miglior Val Loss: {miglior_loss_val:.4f}). Pronto per il Test!")
+print(f"\n Modello ripristinato ai pesi ottimali (Miglior Val Loss: {miglior_loss_val:.4f}). Pronto per il Test!")
 
 # ==========================================
 # 5. VALUTAZIONE FINALE SUL TEST SET 
@@ -198,8 +196,8 @@ plt.show()
 
 # ==========================================
 # 7. EXPLAINABLE AI: SHAP
-# ==========================================
-print("\nCalcolo dei valori SHAP in corso (potrebbe richiedere qualche secondo)...")
+
+print("\nCalcolo dei valori SHAP in corso...")
 
 # 7.1 Creare la funzione wrapper per SHAP
 def predici_probabilita_shap(x_numpy):
@@ -218,7 +216,7 @@ background = X_train_scalati[:100]
 # Inizializzare l'Explainer di SHAP usando il wrapper model-agnostic
 explainer_shap = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
 
-# Calcolare i valori SHAP per il set di test (limitiamo a 100 campioni per velocità, X_test_scalati intero se si ha tempo di calcolo)
+# Calcolare i valori SHAP per il set di test (limitare a 100 campioni per velocità, X_test_scalati intero se si ha tempo di calcolo)
 shap_values = explainer_shap(X_test_scalati[:100])
 
 # --- VISUALIZZAZIONE GLOBALE SHAP ---
@@ -263,11 +261,11 @@ plt.show()
 
 # ==========================================
 # 8. EXPLAINABLE AI: LIME
-# ==========================================
+
 print("\nCalcolo delle spiegazioni LIME in corso...")
 
 # 8.1 Crere la funzione wrapper per LIME
-# ATTENZIONE: LIME per la classificazione binaria richiede che l'output sia una matrice 
+# LIME per la classificazione binaria richiede che l'output sia una matrice 
 # con 2 colonne: [probabilità_classe_0, probabilità_classe_1]
 def predici_probabilita_lime(x_numpy):
     modello.eval()
@@ -298,7 +296,7 @@ spiegazione_lime = explainer_lime.explain_instance(
     num_features=10 # Mostrare solo le 10 features più rilevanti per questo dipendente
 )
 
-# grafico LIME
+# Grafico LIME
 fig_lime = spiegazione_lime.as_pyplot_figure()
 plt.title(f"LIME: Spiegazione Locale (Istanza {indice_da_spiegare})")
 plt.tight_layout()
@@ -311,4 +309,4 @@ print(f"Classe Reale: {int(y_test_np[indice_da_spiegare].item())}")
 # --- ESPORTAZIONE LIME IN HTML ---
 nome_file_html = f"spiegazione_lime_dipendente_{indice_da_spiegare}.html"
 spiegazione_lime.save_to_file(nome_file_html)
-print(f"\n✅ Report LIME interattivo salvato con successo nel file: {nome_file_html}")
+print(f"\nReport LIME interattivo salvato con successo nel file: {nome_file_html}")
