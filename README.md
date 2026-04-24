@@ -7,10 +7,10 @@ Il modello è una **Rete Neurale Artificiale (ANN)** in PyTorch per una classifi
 ##  Caratteristiche Tecniche del Progetto
 
 * **Download Automatico:** Il dataset viene scaricato direttamente da Kaggle tramite la libreria `kagglehub` alla prima esecuzione, senza bisogno di file CSV locali.
-* **Pre-processing:** * Trasformazione delle variabili categoriche in numeriche tramite One-Hot Encoding (`pd.get_dummies`).
+* **Pre-processing:** Trasformazione delle variabili categoriche in numeriche tramite One-Hot Encoding (`pd.get_dummies`).
   * Normalizzazione dei dati (`StandardScaler`).
 
-* **Data Splitting Rigoroso (Prevenzione Data Leakage):** * I dati sono divisi in **Training (70%)**, **Validation (15%)** e **Test (15%)**. 
+* **Data Splitting Rigoroso (Prevenzione Data Leakage):** I dati sono divisi in **Training (70%)**, **Validation (15%)** e **Test (15%)**. 
   * Lo scaler viene calcolato ("fittato") *esclusivamente* sui dati di Training per evitare fughe di informazioni, e poi applicato al resto.
 
 * **Gestione dello Sbilanciamento delle Classi:** Dato che i dipendenti dimissionari sono una minoranza, la funzione di costo (`BCEWithLogitsLoss`) include un **peso proporzionale (`pos_weight`)**. Questo costringe la rete a penalizzare maggiormente i falsi negativi (i dimissionari non individuati).
