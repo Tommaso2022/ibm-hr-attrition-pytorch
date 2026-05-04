@@ -1,14 +1,20 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+os.environ['OMP_NUM_THREADS'] = '1'
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report,accuracy_score, precision_score, recall_score, f1_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 import pandas as pd
 import kagglehub
-import os
 import numpy as np
+import copy
 
 import shap
 import lime.lime_tabular
@@ -147,7 +153,7 @@ print(f"\n Modello ripristinato ai pesi ottimali (Miglior Val Loss: {miglior_los
 
 # ==========================================
 # 5. VALUTAZIONE FINALE SUL TEST SET 
-
+risultati_modelli = []
 modello.eval()
 with torch.no_grad():
     logits_test = modello(X_test)
@@ -158,19 +164,64 @@ valori_reali_test = y_test.numpy()
 # Impostare una soglia di classificazione (0.5)
 predizioni_finali_test = (probabilita_test > 0.5).astype(int)
 
-#ACCURATEZZA [classificazioni corrette / totale classificazoni]
-accuracy_test = accuracy_score(valori_reali_test, predizioni_finali_test)
-#PRECISIONE [veri positivi / veri positivi + falsi positivi]
-precisione = precision_score(valori_reali_test, predizioni_finali_test, zero_division=0)
-#RECALL [veri positivi / veri positivi + falsi negativi] [percentuale veri positivi]
-richiamo = recall_score(valori_reali_test, predizioni_finali_test, zero_division=0)
-#F1-SCORE [media armonica di precisione e richiamo] [2 * ((precision * recall) / (precison + recall))]
-f1 = f1_score(valori_reali_test, predizioni_finali_test, zero_division=0)
-print(f"\nPUNTEGGI METRICHE DI VALUTAZIONE SUL TEST SET")
-print(f"\n--- Accuratezza: {accuracy_test*100:.2f}% ")
-print(f"\n--- Precisione:  {precisione*100:.2f}%")
-print(f"\n--- Recall:  {richiamo*100:.2f}%")
-print(f"\n--- F1-Score:  {f1*100:.2f}%")
+# Salviamo le metriche della Rete Neurale per il grafico
+risultati_modelli.append({
+    'Modello': 'Rete Neurale',
+    'Accuracy': accuracy_score(valori_reali_test, predizioni_finali_test),
+    'Precision': precision_score(valori_reali_test, predizioni_finali_test, zero_division=0),
+    'Recall': recall_score(valori_reali_test, predizioni_finali_test, zero_division=0),
+    'F1-Score': f1_score(valori_reali_test, predizioni_finali_test, zero_division=0)
+})
+
+print("\n=== REPORT RETE NEURALE  ===")
+print(classification_report(valori_reali_test, predizioni_finali_test, target_names=['Rimasto (0)', 'Licenziato (1)']))
+
+print("\nAvvio il confronto tra modelli in corso...")
+
+#  Definire i nuovi modelli da testare
+modelli_tradizionali = {
+    'Regressione Logistica': LogisticRegression(class_weight='balanced', random_state=42),
+    'Random Forest': RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42, n_jobs=1),
+    'XGBoost': XGBClassifier(n_estimators=100, scale_pos_weight=moltiplicatore.item(), random_state=42, eval_metric='logloss', n_jobs=1)
+}
+
+#  Addestramento e valutazione automatica nel ciclo
+# usare y_train_np.flatten() perché sklearn preferisce array 1D (es. [0, 1, 0]) invece di array 2D colonna (es. [[0], [1], [0]]) che si usa per PyTorch.
+
+for nome_modello, modello_test in modelli_tradizionali.items(): # Usare modello_test invece di modello
+    # Nella variabile modello c'è ancora la rete neurale, da cui si calcoleranno i valori shap e lime 
+    
+    # Fase di addestramento
+    modello_test.fit(X_train_scalati, y_train_np.flatten())
+    
+    # Fase di predizione
+    predizioni = modello_test.predict(X_test_scalati)
+    
+    # Salvare le metriche durante i report per poter generare il grafico
+    risultati_modelli.append({
+        'Modello': nome_modello,
+        'Accuracy': accuracy_score(y_test_np, predizioni),
+        'Precision': precision_score(y_test_np, predizioni, zero_division=0),
+        'Recall': recall_score(y_test_np, predizioni, zero_division=0),
+        'F1-Score': f1_score(y_test_np, predizioni, zero_division=0)
+    })
+    
+    print(f"\n=== REPORT {nome_modello.upper()} ===")
+    print(classification_report(y_test_np, predizioni, target_names=['Rimasto (0)', 'Licenziato (1)']))
+    # --- Generazione del Grafico a Barre Comparativo ---
+
+tabella_confronto = pd.DataFrame(risultati_modelli)
+
+# Creazione del grafico
+tabella_confronto.set_index('Modello').plot(kind='bar', figsize=(12, 6), colormap='viridis')
+plt.title('Confronto Metriche: Rete Neurale vs XGB, Random Forest, Log. Regression (Focus Classe 1)')
+plt.ylabel('Punteggio (0 - 1)')
+plt.xticks(rotation=15)
+plt.ylim(0, 1.1) # il limite y poco sopra l'1 per far spazio alla legenda
+plt.legend(loc='lower right')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
 
 # ==========================================
 # 6. GRAFICI
@@ -310,3 +361,29 @@ print(f"Classe Reale: {int(y_test_np[indice_da_spiegare].item())}")
 nome_file_html = f"spiegazione_lime_dipendente_{indice_da_spiegare}.html"
 spiegazione_lime.save_to_file(nome_file_html)
 print(f"\nReport LIME interattivo salvato con successo nel file: {nome_file_html}")
+
+# FEATURE ABLATION (tecnica dell'oscuramento)
+# mettere a 0 le feature più importanti rilevate da shap
+
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+# 1. Identificazione Top 3 Feature da SHAP
+indici_top = np.argsort(np.abs(shap_values.values).mean(0))[::-1][:3]
+metriche = {'Accuracy': accuracy_score, 'Precision': precision_score, 'Recall': recall_score, 'F1': f1_score}
+
+print(f"\n{'FEATURE OSCURATA':<25} | {'ACC':<6} | {'PREC':<6} | {'REC':<6} | {'F1':<6}")
+print("-" * 65)
+
+# Calcolo Base
+base_perf = {n: f(y_test_np, predizioni_finali_test, **({'zero_division':0} if n!='Accuracy' else {})) for n, f in metriche.items()}
+print(f"{'MODELLO INTEGRALE':<25} | {base_perf['Accuracy']:.3f} | {base_perf['Precision']:.3f} | {base_perf['Recall']:.3f} | {base_perf['F1']:.3f}")
+
+# 2. Test di Oscuramento
+for idx in indici_top:
+    X_osc = copy.deepcopy(X_test_scalati)
+    X_osc[:, idx] = 0
+    with torch.no_grad():
+        p_osc = (torch.sigmoid(modello(torch.tensor(X_osc, dtype=torch.float32))).numpy() > 0.5).astype(int)
+    
+    res = {n: f(y_test_np, p_osc, **({'zero_division':0} if n!='Accuracy' else {})) for n, f in metriche.items()}
+    print(f"{nomi_features[idx][:25]:<25} | {res['Accuracy']:.3f} | {res['Precision']:.3f} | {res['Recall']:.3f} | {res['F1']:.3f}")

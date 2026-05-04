@@ -37089,25 +37089,25 @@
 /***/ })
 /******/ ]);
 //# sourceMappingURL=bundle.js.map </script></head><body>
-        <div class="lime top_div" id="top_divPJ5S67ECP2KVE50"></div>
+        <div class="lime top_div" id="top_divZDYBMB17UA6Q9ZN"></div>
         
         <script>
-        var top_div = d3.select('#top_divPJ5S67ECP2KVE50').classed('lime top_div', true);
+        var top_div = d3.select('#top_divZDYBMB17UA6Q9ZN').classed('lime top_div', true);
         
             var pp_div = top_div.append('div')
                                 .classed('lime predict_proba', true);
             var pp_svg = pp_div.append('svg').style('width', '100%');
-            var pp = new lime.PredictProba(pp_svg, ["Rimasto", "Licenziato"], [0.938512921333313, 0.06148707494139671]);
+            var pp = new lime.PredictProba(pp_svg, ["Rimasto", "Licenziato"], [0.7915580868721008, 0.20844192802906036]);
             
         
         var exp_div;
             var exp = new lime.Explanation(["Rimasto", "Licenziato"]);
         
                 exp_div = top_div.append('div').classed('lime explanation', true);
-                exp.show([["JobRole_Research Director <= -0.24", 0.19345835240791973], ["JobRole_Sales Representative <= -0.23", -0.18697249693679338], ["EducationField_Other > -0.22", -0.1707939477778488], ["OverTime_Yes <= -0.64", -0.14492161529157652], ["JobRole_Laboratory Technician <= -0.46", -0.1357450847909042], ["JobSatisfaction <= -0.64", 0.11406775430420962], ["TotalWorkingYears > 0.48", -0.10294332458393264], ["JobRole_Manufacturing Director <= -0.33", 0.09702889989290246], ["BusinessTravel_Travel_Frequently <= -0.47", -0.08704848793849049], ["MaritalStatus_Single <= -0.68", -0.07038258766830995]], 1, exp_div);
+                exp.show([["EducationField_Other > -0.22", -0.20820706634747507], ["JobRole_Research Director <= -0.24", 0.1627779065946766], ["OverTime_Yes <= -0.64", -0.1504460734663446], ["BusinessTravel_Travel_Frequently <= -0.47", -0.13647919607678738], ["JobSatisfaction <= -0.64", 0.1255325482174155], ["YearsSinceLastPromotion > 0.25", 0.0986410867227567], ["JobRole_Manufacturing Director <= -0.33", 0.09849847972146657], ["JobRole_Laboratory Technician <= -0.46", -0.08798151164277038], ["WorkLifeBalance <= -1.06", 0.08515924229295742], ["TotalWorkingYears > 0.48", -0.08054496421902672]], 1, exp_div);
                 
         var raw_div = top_div.append('div');
-            exp.show_raw_tabular([["JobRole_Research Director", "-0.24", 0.19345835240791973], ["JobRole_Sales Representative", "-0.23", -0.18697249693679338], ["EducationField_Other", "4.47", -0.1707939477778488], ["OverTime_Yes", "-0.64", -0.14492161529157652], ["JobRole_Laboratory Technician", "-0.46", -0.1357450847909042], ["JobSatisfaction", "-0.64", 0.11406775430420962], ["TotalWorkingYears", "1.00", -0.10294332458393264], ["JobRole_Manufacturing Director", "-0.33", 0.09702889989290246], ["BusinessTravel_Travel_Frequently", "-0.47", -0.08704848793849049], ["MaritalStatus_Single", "-0.68", -0.07038258766830995]], 1, raw_div);
+            exp.show_raw_tabular([["EducationField_Other", "4.47", -0.20820706634747507], ["JobRole_Research Director", "-0.24", 0.1627779065946766], ["OverTime_Yes", "-0.64", -0.1504460734663446], ["BusinessTravel_Travel_Frequently", "-0.47", -0.13647919607678738], ["JobSatisfaction", "-0.64", 0.1255325482174155], ["YearsSinceLastPromotion", "0.56", 0.0986410867227567], ["JobRole_Manufacturing Director", "-0.33", 0.09849847972146657], ["JobRole_Laboratory Technician", "-0.46", -0.08798151164277038], ["WorkLifeBalance", "-1.06", 0.08515924229295742], ["TotalWorkingYears", "1.00", -0.08054496421902672]], 1, raw_div);
         
         </script>
         </body></html>
