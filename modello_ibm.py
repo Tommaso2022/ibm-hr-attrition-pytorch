@@ -164,7 +164,7 @@ valori_reali_test = y_test.numpy()
 # Impostare una soglia di classificazione (0.5)
 predizioni_finali_test = (probabilita_test > 0.5).astype(int)
 
-# Salviamo le metriche della Rete Neurale per il grafico
+# Salvare le metriche della Rete Neurale per il grafico
 risultati_modelli.append({
     'Modello': 'Rete Neurale',
     'Accuracy': accuracy_score(valori_reali_test, predizioni_finali_test),
@@ -364,8 +364,6 @@ print(f"\nReport LIME interattivo salvato con successo nel file: {nome_file_html
 
 # FEATURE ABLATION (tecnica dell'oscuramento)
 # mettere a 0 le feature più importanti rilevate da shap
-
-from sklearn.metrics import precision_score, recall_score, f1_score
 
 # 1. Identificazione Top 3 Feature da SHAP
 indici_top = np.argsort(np.abs(shap_values.values).mean(0))[::-1][:3]
