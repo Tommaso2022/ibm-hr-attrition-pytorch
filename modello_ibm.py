@@ -15,6 +15,8 @@ import pandas as pd
 import kagglehub
 import numpy as np
 import copy
+import seaborn as sns
+
 
 import shap
 import lime.lime_tabular
@@ -385,3 +387,310 @@ for idx in indici_top:
     
     res = {n: f(y_test_np, p_osc, **({'zero_division':0} if n!='Accuracy' else {})) for n, f in metriche.items()}
     print(f"{nomi_features[idx][:25]:<25} | {res['Accuracy']:.3f} | {res['Precision']:.3f} | {res['Recall']:.3f} | {res['F1']:.3f}")
+ # ========================================================================
+# 9. FUNZIONE PER NORMALIZZARE L’OUTPUT DI SHAP (FONDAMENTALE)
+# ========================================================================
+
+def normalizza_shap_output(shap_vals):
+    import numpy as np
+
+    # Caso 1: lista → significa modello binario → usiamo la classe 1
+    if isinstance(shap_vals, list):
+        return np.array(shap_vals[1])
+
+    shap_vals = np.array(shap_vals)
+
+    # Caso 2: array 3D (n, f, 2) → prendiamo solo la colonna della classe 1
+    if shap_vals.ndim == 3:
+        return shap_vals[:, :, 1]
+
+    # Caso 3: array 2D → perfetto
+    if shap_vals.ndim == 2:
+        return shap_vals
+
+    raise ValueError(f"Formato SHAP non riconosciuto: {shap_vals.shape}")
+
+
+# ========================================================================
+# 10. SHAP PER TUTTI I MODELLI
+# ========================================================================
+
+print("\n=== Calcolo SHAP per tutti i modelli ===")
+
+modelli_addestrati = {
+    'Rete Neurale': modello,
+    'Regressione Logistica': modelli_tradizionali['Regressione Logistica'],
+    'Random Forest': modelli_tradizionali['Random Forest'],
+    'XGBoost': modelli_tradizionali['XGBoost']
+}
+
+shap_values_modelli = {}
+
+for nome, model_corr in modelli_addestrati.items():
+    print(f"\nCalcolo SHAP per: {nome}")
+
+    # Rete neurale → wrapper personalizzato
+    if nome == 'Rete Neurale':
+        explainer = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
+        raw_vals = explainer(X_test_scalati).values
+
+    # Modelli ad albero
+    elif nome in ['Random Forest', 'XGBoost']:
+        explainer = shap.TreeExplainer(model_corr)
+        raw_vals = explainer.shap_values(X_test_scalati)
+
+    # Regressione logistica
+    elif nome == 'Regressione Logistica':
+        explainer = shap.LinearExplainer(model_corr, X_train_scalati)
+        raw_vals = explainer.shap_values(X_test_scalati)
+
+    # Normalizzazione shap_values per renderlo sempre (n_sample, n_feat)
+    shap_vals_matrix = normalizza_shap_output(raw_vals)
+    shap_values_modelli[nome] = shap_vals_matrix
+
+    # Beeswarm globale
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_vals_matrix, X_test_scalati, feature_names=nomi_features, show=False)
+    plt.title(f"SHAP Beeswarm - {nome}")
+    plt.tight_layout()
+    plt.show()
+
+
+# ========================================================================
+# 11. CONFRONTO TOP-FEATURE TRA I MODELLI
+# ========================================================================
+
+print("\n=== Confronto delle TOP 10 features tra modelli ===\n")
+
+top_features_modelli = {}
+
+for nome, sv in shap_values_modelli.items():
+    importance = np.abs(sv).mean(axis=0)
+    indici = np.argsort(importance)[::-1]
+    top10 = [nomi_features[i] for i in indici[:10]]
+    top_features_modelli[nome] = top10
+    print(f"{nome}: {top10}\n")
+
+
+# ========================================================================
+# 12. FEATURE ABLATION AVANZATA
+# ========================================================================
+
+print("\n=== Feature Ablation avanzata ===")
+
+# Top 3 comuni
+top3_comuni = list(set.intersection(*(set(v[:3]) for v in top_features_modelli.values())))
+print("\nTop 3 comuni tra tutti i modelli:", top3_comuni)
+
+# Top 5 comuni
+top5_comuni = list(set.intersection(*(set(v[:5]) for v in top_features_modelli.values())))
+print("\nTop 5 comuni tra tutti i modelli:", top5_comuni)
+
+# Dataset come DataFrame
+df_train = pd.DataFrame(X_train_scalati, columns=nomi_features)
+df_test = pd.DataFrame(X_test_scalati, columns=nomi_features)
+
+# Dataset con rimozione top3
+X_train_rimozione = df_train.drop(columns=top3_comuni).values
+X_test_rimozione = df_test.drop(columns=top3_comuni).values
+
+# Dataset solo top5
+X_train_top = df_train[top5_comuni].values
+X_test_top = df_test[top5_comuni].values
+
+def riaddestra(Xtr, Xts):
+    risultati = {}
+    for nome in ['Regressione Logistica', 'Random Forest', 'XGBoost']:
+        model_new = copy.deepcopy(modelli_tradizionali[nome])
+        model_new.fit(Xtr, y_train_np)
+        pred = model_new.predict(Xts)
+        risultati[nome] = {
+            "Accuracy": accuracy_score(y_test_np, pred),
+            "Precision": precision_score(y_test_np, pred, zero_division=0),
+            "Recall": recall_score(y_test_np, pred, zero_division=0),
+            "F1": f1_score(y_test_np, pred, zero_division=0)
+        }
+    return risultati
+
+print("\n=== CONFRONTO METRICHE TRA I MODELLI (3 configurazioni) ===\n")
+print("\n=== Creazione dataset completi e ridotti con feature masking ===")
+# Dataset completo (nessuna modifica)
+X_train_completo = X_train_scalati.copy()
+X_test_completo = X_test_scalati.copy()
+# Dataset con top 3 features AZZERATE
+X_train_no3 = X_train_scalati.copy()
+X_test_no3 = X_test_scalati.copy()
+for feat in top3_comuni:
+    idx = nomi_features.index(feat)
+    X_train_no3[:, idx] = 0
+    X_test_no3[:, idx] = 0
+# Dataset con SOLO top 5 features (tutte le altre a 0)
+X_train_top5 = np.zeros_like(X_train_scalati)
+X_test_top5 = np.zeros_like(X_test_scalati)
+for feat in top5_comuni:
+    idx = nomi_features.index(feat)
+    X_train_top5[:, idx] = X_train_scalati[:, idx]
+    X_test_top5[:, idx] = X_test_scalati[:, idx]
+# ========================================================================
+# 16. FUNZIONE PER VALUTARE NN + MODELLI SKLEARN
+# ========================================================================
+def valuta_modelli_tutti(Xtr, Xts, ytr=y_train_np, yts=y_test_np):
+    risultati = []
+    # ----------------------------------------------------------
+    # 1) RETE NEURALE (usa il modello già addestrato!)
+    # ----------------------------------------------------------
+    modello.eval()
+    with torch.no_grad():
+        logits = modello(torch.tensor(Xts, dtype=torch.float32))
+        preds_nn = (torch.sigmoid(logits).numpy() > 0.5).astype(int)
+    risultati.append({
+        "Modello": "Rete Neurale",
+        "Accuracy": accuracy_score(yts, preds_nn),
+        "Precision": precision_score(yts, preds_nn, zero_division=0),
+        "Recall": recall_score(yts, preds_nn, zero_division=0),
+        "F1": f1_score(yts, preds_nn, zero_division=0)
+    })
+    # ----------------------------------------------------------
+    # 2) MODELLI SKLEARN
+    # ----------------------------------------------------------
+    for nome, modello_base in modelli_tradizionali.items():
+        modello_new = copy.deepcopy(modello_base)
+        modello_new.fit(Xtr, ytr)
+        preds = modello_new.predict(Xts)
+        risultati.append({
+            "Modello": nome,
+            "Accuracy": accuracy_score(yts, preds),
+            "Precision": precision_score(yts, preds, zero_division=0),
+            "Recall": recall_score(yts, preds, zero_division=0),
+            "F1": f1_score(yts, preds, zero_division=0)
+        })
+    return pd.DataFrame(risultati)
+# ========================================================================
+# 17. VALUTAZIONE SU TUTTI E 3 I DATASET
+# ========================================================================
+print("\n=== Dataset COMPLETO ===")
+ris_completo = valuta_modelli_tutti(X_train_completo, X_test_completo)
+print(ris_completo)
+print("\n=== Dataset SENZA TOP 3 (feature azzerate) ===")
+ris_no3 = valuta_modelli_tutti(X_train_no3, X_test_no3)
+print(ris_no3)
+print("\n=== Dataset SOLO TOP 5 (altre feature = 0) ===")
+ris_top5 = valuta_modelli_tutti(X_train_top5, X_test_top5)
+print(ris_top5)
+# ========================================================================
+# 18. TABELLA FINALE DI CONFRONTO
+# ========================================================================
+tabella_finale = pd.concat([
+    ris_completo.assign(Dataset="Completo"),
+    ris_no3.assign(Dataset="Senza Top 3"),
+    ris_top5.assign(Dataset="Solo Top 5")
+], ignore_index=True)
+print("\n=== TABELLA COMPLETA DI CONFRONTO (NN + 3 MODELLI) ===")
+print(tabella_finale)
+# ========================================================================
+# 19. GRAFICO COMPARATIVO (solo F1)
+# ========================================================================
+plt.figure(figsize=(12,6))
+unique_models = tabella_finale["Modello"].unique()
+x = np.arange(len(unique_models))
+width = 0.25
+for i, dataset in enumerate(tabella_finale["Dataset"].unique()):
+    valori = tabella_finale[tabella_finale["Dataset"] == dataset]["F1"]
+    plt.bar(x + i*width, valori, width, label=dataset)
+plt.xticks(x + width, unique_models)
+plt.ylabel("F1")
+plt.title("Confronto F1 dei modelli nelle 3 configurazioni di feature")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# ========================================================================
+# 13. SHAP LOCALE + LIME LOCALE PER UN DIPENDENTE SCELTO DALL’UTENTE
+# ========================================================================
+
+indice = int(input(f"\nInserisci indice dipendente da analizzare (0 - {len(X_test_np)-1}): "))
+print(f"\n=== SHAP locale per istanza {indice} ===")
+for nome, modello_corr in modelli_addestrati.items():
+    print(f"\n{nome}")
+    # 1) Select explainer
+    if nome == 'Rete Neurale':
+        explainer_locale = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
+    elif nome in ['Random Forest', 'XGBoost']:
+        explainer_locale = shap.TreeExplainer(modello_corr)
+    elif nome == 'Regressione Logistica':
+        explainer_locale = shap.LinearExplainer(modello_corr, X_train_scalati)
+    # 2) SHAP locale
+    ex = explainer_locale(X_test_scalati[indice:indice+1])
+    # 3) Extract SHAP values
+    vals = ex.values[0]
+    if vals.ndim == 2:
+        vals = vals[:, 1]        # classe 1
+    elif vals.ndim == 3:
+        vals = vals[:, :, 0]
+    # 4) Base value (corretto)
+    base = ex.base_values
+    if not isinstance(base, np.ndarray):
+        base = float(base)
+    else:
+        if base.ndim == 0:
+            base = float(base)
+        elif base.ndim == 1:
+            if base.shape[0] == 1:
+                base = float(base[0])
+            else:
+                base = float(base[1])   # classe 1
+        elif base.ndim == 2:
+            if base.shape == (1, 2):
+                base = float(base[0][1])
+            elif base.shape == (1, 1):
+                base = float(base[0][0])
+            else:
+                base = float(base.ravel()[1])
+        else:
+            base = float(base.ravel()[0])
+    # 5) Explanation final
+    explanation = shap.Explanation(
+        values=vals,
+        base_values=base,
+        data=X_test_scalati[indice],
+        feature_names=nomi_features
+    )
+    shap.plots.waterfall(explanation, show=False)
+    plt.title(f"SHAP Locale – {nome} – Istanza {indice}")
+    plt.tight_layout()
+    plt.show()
+
+
+# ========================================================================
+# 14. LIME LOCALE PER TUTTI I MODELLI
+# ========================================================================
+
+print("\n=== LIME Locale per tutti i modelli ===\n")
+
+def pred_fn_sklearn(model):
+    return lambda x: np.column_stack([
+        1 - model.predict_proba(x)[:, 1],
+        model.predict_proba(x)[:, 1]
+    ])
+spieg_nn = explainer_lime.explain_instance(
+    X_test_scalati[indice],
+    predici_probabilita_lime,   # usa la tua funzione custom
+    num_features=10
+)
+fig_nn = spieg_nn.as_pyplot_figure()
+plt.title(f"LIME Locale – Rete Neurale – Istanza {indice}")
+plt.tight_layout()
+plt.show()
+for nome in ['Regressione Logistica', 'Random Forest', 'XGBoost']:
+    modello_corr = modelli_tradizionali[nome]
+
+    spieg = explainer_lime.explain_instance(
+        X_test_scalati[indice],
+        pred_fn_sklearn(modello_corr),
+        num_features=10
+    )
+
+    spieg.as_pyplot_figure()
+    plt.title(f"LIME Locale – {nome} – Istanza {indice}")
+    plt.tight_layout()
+    plt.show()
