@@ -153,6 +153,7 @@ for epoca in range(epoche):
 modello.load_state_dict(migliori_pesi)
 print(f"\n Modello ripristinato ai pesi ottimali (Miglior Val Loss: {miglior_loss_val:.4f}). Pronto per il Test!")
 
+
 # ==========================================
 # 5. VALUTAZIONE FINALE SUL TEST SET 
 risultati_modelli = []
@@ -177,6 +178,25 @@ risultati_modelli.append({
 
 print("\n=== REPORT RETE NEURALE  ===")
 print(classification_report(valori_reali_test, predizioni_finali_test, target_names=['Rimasto (0)', 'Licenziato (1)']))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+# Grafico Loss: Confrontiamo Train e Val
+ax1.plot(loss_train_lista, color='blue', label='Train Loss')
+ax1.plot(loss_val_lista, color='red', linestyle='--', label='Validation Loss')
+ax1.set_title("Andamento dell'Errore")
+ax1.set_xlabel("Epoche")
+ax1.set_ylabel("Loss")
+ax1.legend()
+ax1.grid(True, linestyle='--', alpha=0.6)
+
+# Confusion Matrix sul TEST SET
+matrice = confusion_matrix(valori_reali_test, predizioni_finali_test)
+grafico_matrice = ConfusionMatrixDisplay(confusion_matrix=matrice, display_labels=['Rimasto (0)', 'Licenziato (1)'])
+grafico_matrice.plot(cmap=plt.cm.Blues, ax=ax2)
+ax2.set_title("Matrice di Confusione (Test Set)")
+
+plt.tight_layout()
+plt.show()
 
 print("\nAvvio il confronto tra modelli in corso...")
 
@@ -226,28 +246,6 @@ plt.tight_layout()
 plt.show()
 
 # ==========================================
-# 6. GRAFICI
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-
-# Grafico Loss: Confrontiamo Train e Val
-ax1.plot(loss_train_lista, color='blue', label='Train Loss')
-ax1.plot(loss_val_lista, color='red', linestyle='--', label='Validation Loss')
-ax1.set_title("Andamento dell'Errore")
-ax1.set_xlabel("Epoche")
-ax1.set_ylabel("Loss")
-ax1.legend()
-ax1.grid(True, linestyle='--', alpha=0.6)
-
-# Confusion Matrix sul TEST SET
-matrice = confusion_matrix(valori_reali_test, predizioni_finali_test)
-grafico_matrice = ConfusionMatrixDisplay(confusion_matrix=matrice, display_labels=['Rimasto (0)', 'Licenziato (1)'])
-grafico_matrice.plot(cmap=plt.cm.Blues, ax=ax2)
-ax2.set_title("Matrice di Confusione (Test Set)")
-
-plt.tight_layout()
-plt.show()
-
-# ==========================================
 # 7. EXPLAINABLE AI: SHAP
 
 print("\nCalcolo dei valori SHAP in corso...")
@@ -272,15 +270,16 @@ explainer_shap = shap.Explainer(predici_probabilita_shap, background, feature_na
 # Calcolare i valori SHAP per il set di test (limitare a 100 campioni per velocità, X_test_scalati intero se si ha tempo di calcolo)
 shap_values = explainer_shap(X_test_scalati[:100])
 
+#SHAP A LIVELLO GLOBALE E LOCALE SOLO RETE NEURALE 
 # --- VISUALIZZAZIONE GLOBALE SHAP ---
-print("\nGenerazione del grafico SHAP Globale (Beeswarm)...")
-plt.figure(figsize=(10, 6))
+#print("\nGenerazione del grafico SHAP Globale (Beeswarm)...")
+#plt.figure(figsize=(10, 6))
 # Il BEESWARM plot mostra l'impatto di ogni feature su tutte le predizioni del test set.
 # I colori rosso/blu indicano se il valore originale della feature era alto o basso.
-shap.plots.beeswarm(shap_values, show=False)
-plt.title("SHAP: Importanza Globale delle Features")
-plt.tight_layout()
-plt.show()
+#shap.plots.beeswarm(shap_values, show=False)
+#plt.title("SHAP: Importanza Globale delle Features")
+#plt.tight_layout()
+#plt.show()
 
 # ---  BAR PLOT GLOBALE ---
 #print("\nGenerazione del Bar Plot Globale SHAP...")
@@ -302,67 +301,14 @@ plt.show()
 
 # --- VISUALIZZAZIONE LOCALE SHAP (WATERFALL PLOT) ---
 # Analisi di un singolo dipendente (il primo del test set, indice 0)
-print("\nGenerazione del grafico SHAP Locale (Waterfall) per la prima istanza...")
-plt.figure()
+#print("\nGenerazione del grafico SHAP Locale (Waterfall) per la prima istanza...")
+#plt.figure()
 # Il Waterfall plot parte dal valore di base (media) e mostra come ogni variabile 
 # "Spinge" la probabilità in alto (rosso) o in basso (blu) per questo specifico utente.
-shap.plots.waterfall(shap_values[0], show=False)
-plt.title("SHAP: Spiegazione Locale (Istanza 0)")
-plt.tight_layout()
-plt.show()
-
-
-# ==========================================
-# 8. EXPLAINABLE AI: LIME
-
-print("\nCalcolo delle spiegazioni LIME in corso...")
-
-# Crere la funzione wrapper per LIME
-# LIME per la classificazione binaria richiede che l'output sia una matrice 
-# Con 2 colonne: [probabilità_classe_0, probabilità_classe_1]
-def predici_probabilita_lime(x_numpy):
-    modello.eval()
-    with torch.no_grad():
-        x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
-        logits = modello(x_tensor)
-        prob_classe_1 = torch.sigmoid(logits).numpy()
-        prob_classe_0 = 1.0 - prob_classe_1
-        # Unire le due probabilità affiancandole
-        return np.hstack((prob_classe_0, prob_classe_1))
-
-# Inizializzare l'explainer di LIME addestrandolo sui dati di training (scalati)
-explainer_lime = lime.lime_tabular.LimeTabularExplainer(
-    training_data=X_train_scalati,
-    feature_names=nomi_features,
-    class_names=['Rimasto', 'Licenziato'],
-    mode='classification',
-    random_state=42
-)
-
-# --- VISUALIZZAZIONE LOCALE LIME ---
-# Generare la spiegazione per lo stesso dipendente di prima (indice 0 del Test Set)
-indice_da_spiegare = 0
-
-spiegazione_lime = explainer_lime.explain_instance(
-    data_row=X_test_scalati[indice_da_spiegare], 
-    predict_fn=predici_probabilita_lime,
-    num_features=10 # Mostrare solo le 10 features più rilevanti per questo dipendente
-)
-
-# Grafico LIME
-fig_lime = spiegazione_lime.as_pyplot_figure()
-plt.title(f"LIME: Spiegazione Locale (Istanza {indice_da_spiegare})")
-plt.tight_layout()
-plt.show()
-
-# Stampa testuale di LIME
-print(f"\nProbabilità predetta per l'istanza {indice_da_spiegare}: {predici_probabilita_lime(X_test_scalati[[indice_da_spiegare]])[0][1]*100:.2f}% (Licenziato)")
-print(f"Classe Reale: {int(y_test_np[indice_da_spiegare].item())}")
-
-# --- ESPORTAZIONE LIME IN HTML ---
-nome_file_html = f"spiegazione_lime_dipendente_{indice_da_spiegare}.html"
-spiegazione_lime.save_to_file(nome_file_html)
-print(f"\nReport LIME interattivo salvato con successo nel file: {nome_file_html}")
+#shap.plots.waterfall(shap_values[0], show=False)
+#plt.title("SHAP: Spiegazione Locale (Istanza 0)")
+#plt.tight_layout()
+#plt.show()
 
 # FEATURE ABLATION (tecnica dell'oscuramento)
 # mettere a 0 le feature più importanti rilevate da shap
@@ -371,12 +317,8 @@ print(f"\nReport LIME interattivo salvato con successo nel file: {nome_file_html
 indici_top = np.argsort(np.abs(shap_values.values).mean(0))[::-1][:3]
 metriche = {'Accuracy': accuracy_score, 'Precision': precision_score, 'Recall': recall_score, 'F1': f1_score}
 
-print(f"\n{'FEATURE OSCURATA':<25} | {'ACC':<6} | {'PREC':<6} | {'REC':<6} | {'F1':<6}")
-print("-" * 65)
-
 # Calcolo Base
 base_perf = {n: f(y_test_np, predizioni_finali_test, **({'zero_division':0} if n!='Accuracy' else {})) for n, f in metriche.items()}
-print(f"{'MODELLO INTEGRALE':<25} | {base_perf['Accuracy']:.3f} | {base_perf['Precision']:.3f} | {base_perf['Recall']:.3f} | {base_perf['F1']:.3f}")
 
 # 2. Test di Oscuramento
 for idx in indici_top:
@@ -386,9 +328,8 @@ for idx in indici_top:
         p_osc = (torch.sigmoid(modello(torch.tensor(X_osc, dtype=torch.float32))).numpy() > 0.5).astype(int)
     
     res = {n: f(y_test_np, p_osc, **({'zero_division':0} if n!='Accuracy' else {})) for n, f in metriche.items()}
-    print(f"{nomi_features[idx][:25]:<25} | {res['Accuracy']:.3f} | {res['Precision']:.3f} | {res['Recall']:.3f} | {res['F1']:.3f}")
- # ========================================================================
-# 9. FUNZIONE PER NORMALIZZARE L’OUTPUT DI SHAP (FONDAMENTALE)
+# ========================================================================
+# 9. FUNZIONE PER NORMALIZZARE L’OUTPUT DI SHAP 
 # ========================================================================
 
 def normalizza_shap_output(shap_vals):
@@ -473,10 +414,10 @@ for nome, sv in shap_values_modelli.items():
 
 
 # ========================================================================
-# 12. FEATURE ABLATION AVANZATA
+# 12. FEATURE ABLATION 
 # ========================================================================
 
-print("\n=== Feature Ablation avanzata ===")
+print("\n=== Feature Ablation  ===")
 
 # Top 3 comuni
 top3_comuni = list(set.intersection(*(set(v[:3]) for v in top_features_modelli.values())))
@@ -605,92 +546,189 @@ plt.tight_layout()
 plt.show()
 
 # ========================================================================
-# 13. SHAP LOCALE + LIME LOCALE PER UN DIPENDENTE SCELTO DALL’UTENTE
+# 30. ANALISI COMPLETA DI UN DIPENDENTE CON SHAP + LIME + NATURAL LANGUAGE
 # ========================================================================
 
-indice = int(input(f"\nInserisci indice dipendente da analizzare (0 - {len(X_test_np)-1}): "))
-print(f"\n=== SHAP locale per istanza {indice} ===")
-for nome, modello_corr in modelli_addestrati.items():
-    print(f"\n{nome}")
-    # 1) Select explainer
-    if nome == 'Rete Neurale':
-        explainer_locale = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
-    elif nome in ['Random Forest', 'XGBoost']:
-        explainer_locale = shap.TreeExplainer(modello_corr)
-    elif nome == 'Regressione Logistica':
-        explainer_locale = shap.LinearExplainer(modello_corr, X_train_scalati)
-    # 2) SHAP locale
-    ex = explainer_locale(X_test_scalati[indice:indice+1])
-    # 3) Extract SHAP values
-    vals = ex.values[0]
-    if vals.ndim == 2:
-        vals = vals[:, 1]        # classe 1
-    elif vals.ndim == 3:
-        vals = vals[:, :, 0]
-    # 4) Base value (corretto)
-    base = ex.base_values
-    if not isinstance(base, np.ndarray):
-        base = float(base)
-    else:
-        if base.ndim == 0:
-            base = float(base)
-        elif base.ndim == 1:
-            if base.shape[0] == 1:
-                base = float(base[0])
-            else:
-                base = float(base[1])   # classe 1
-        elif base.ndim == 2:
-            if base.shape == (1, 2):
-                base = float(base[0][1])
-            elif base.shape == (1, 1):
-                base = float(base[0][0])
-            else:
-                base = float(base.ravel()[1])
-        else:
-            base = float(base.ravel()[0])
-    # 5) Explanation final
-    explanation = shap.Explanation(
-        values=vals,
-        base_values=base,
-        data=X_test_scalati[indice],
-        feature_names=nomi_features
+indice = int(input(f"\nInserisci l'indice del dipendente da analizzare (0 - {len(X_test_np)-1}): "))
+
+x = X_test_scalati[indice]
+x2d = X_test_scalati[indice:indice+1]
+y_true = int(y_test_np[indice])
+
+print("\n============================================================")
+print(f" ANALISI COMPLETA ISTANZA {indice}  (Classe reale: {'Licenziato' if y_true else 'Non licenziato'})")
+print("============================================================\n")
+
+
+# ------------------------------------------------------------------------
+# FUNZIONI DI SUPPORTO
+# ------------------------------------------------------------------------
+
+def interpretazione(predizione, feature, valore, modello):
+    stato = "Licenziato" if predizione == 1 else "Non licenziato"
+    direzione = "aumenta" if valore > 0 else "riduce"
+    return (
+        f"Il modello **{modello}** classifica il dipendente come **{stato}** "
+        f"e la variabile più influente è **{feature}**, che {direzione} la probabilità."
     )
-    shap.plots.waterfall(explanation, show=False)
-    plt.title(f"SHAP Locale – {nome} – Istanza {indice}")
-    plt.tight_layout()
-    plt.show()
 
-
-# ========================================================================
-# 14. LIME LOCALE PER TUTTI I MODELLI
-# ========================================================================
-
-print("\n=== LIME Locale per tutti i modelli ===\n")
 
 def pred_fn_sklearn(model):
     return lambda x: np.column_stack([
         1 - model.predict_proba(x)[:, 1],
         model.predict_proba(x)[:, 1]
     ])
-spieg_nn = explainer_lime.explain_instance(
-    X_test_scalati[indice],
-    predici_probabilita_lime,   # usa la tua funzione custom
-    num_features=10
-)
-fig_nn = spieg_nn.as_pyplot_figure()
-plt.title(f"LIME Locale – Rete Neurale – Istanza {indice}")
-plt.tight_layout()
-plt.show()
-for nome in ['Regressione Logistica', 'Random Forest', 'XGBoost']:
-    modello_corr = modelli_tradizionali[nome]
 
-    spieg = explainer_lime.explain_instance(
-        X_test_scalati[indice],
-        pred_fn_sklearn(modello_corr),
-        num_features=10
+
+def normalizza_shap_local(ex):
+    vals = ex.values
+
+    # (1, n_features, 2)
+    if vals.ndim == 3 and vals.shape[-1] == 2:
+        vals = vals[:, :, 1][0]
+
+    # (n_features, 2)
+    elif vals.ndim == 2 and vals.shape[-1] == 2:
+        vals = vals[:, 1]
+
+    # (1, n_features)
+    elif vals.ndim == 2 and vals.shape[0] == 1:
+        vals = vals[0]
+
+    # (n_features,)
+    elif vals.ndim == 1:
+        pass
+
+    else:
+        raise ValueError(f"Formato SHAP locale non gestito: {vals.shape}")
+
+    # Base values sempre scalare
+    base = ex.base_values
+    if isinstance(base, np.ndarray):
+        base = float(np.mean(base))
+
+    return vals, base
+
+
+def shap_local_one_model(explainer, x2d, x, name):
+    ex = explainer(x2d)
+    vals, base = normalizza_shap_local(ex)
+    idx = np.argmax(np.abs(vals))
+    feat = nomi_features[idx]
+    val = vals[idx]
+
+    explanation = shap.Explanation(
+        values=vals,
+        base_values=base,
+        data=x,
+        feature_names=nomi_features
     )
 
-    spieg.as_pyplot_figure()
-    plt.title(f"LIME Locale – {nome} – Istanza {indice}")
+    shap.plots.waterfall(explanation, show=False)
+    plt.title(f"SHAP - {name} (Istanza {indice})")
     plt.tight_layout()
     plt.show()
+
+    return feat, val
+explainer_lime = lime.lime_tabular.LimeTabularExplainer(
+    training_data=X_train_scalati,
+    feature_names=nomi_features,
+    class_names=['Rimasto', 'Licenziato'],
+    mode='classification',
+    random_state=42
+)
+
+def predici_probabilita_lime(x_numpy):
+    modello.eval()
+    with torch.no_grad():
+        x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
+        logits = modello(x_tensor)
+        prob1 = torch.sigmoid(logits).numpy()
+        prob0 = 1 - prob1
+        return np.hstack((prob0, prob1))
+    
+def frase_shap(feature, valore):
+    direzione = "aumenta" if valore > 0 else "riduce"
+    return f"Feature più influente(SHAP) **{feature}** è quella con l’impatto maggiore e {direzione} la probabilità di licenziamento."
+
+
+
+
+# ------------------------------------------------------------------------
+# 1) RETE NEURALE
+# ------------------------------------------------------------------------
+print("\n================= RETE NEURALE =================")
+
+modello.eval()
+with torch.no_grad():
+    prob = torch.sigmoid(modello(torch.tensor(x2d, dtype=torch.float32))).item()
+pred = int(prob > 0.5)
+
+print(f"Predizione: {'Licenziato' if pred else 'Non licenziato'}  (prob={prob:.4f})")
+
+# LIME
+esp_nn = explainer_lime.explain_instance(x, predici_probabilita_lime, num_features=10)
+feat_lime_nn, peso_lime_nn = esp_nn.as_list()[0]
+print(f"Feature più influente (LIME): {feat_lime_nn}")
+
+plt.figure()
+esp_nn.as_pyplot_figure()
+plt.title(f"LIME - NN (Istanza {indice})")
+plt.tight_layout()
+plt.show()
+
+# SHAP NN
+explainer_nn = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
+feat_shap_nn, val_shap_nn = shap_local_one_model(explainer_nn, x2d, x, "Rete Neurale")
+
+print(frase_shap(feat_shap_nn, val_shap_nn))
+print(interpretazione(pred, feat_shap_nn, val_shap_nn, "Rete Neurale"))
+
+
+
+# ------------------------------------------------------------------------
+# 2) ALTRI MODELLI (LogReg, RF, XGB)
+# ------------------------------------------------------------------------
+for nome, model in modelli_tradizionali.items():
+    print(f"\n================= {nome.upper()} =================")
+
+    # Predizione
+    prob = model.predict_proba(x2d)[0][1]
+    pred = int(prob > 0.5)
+    print(f"Predizione: {'Licenziato' if pred else 'Non licenziato'}  (prob={prob:.4f})")
+
+    # LIME
+    esp = explainer_lime.explain_instance(x, pred_fn_sklearn(model), num_features=10)
+    feat_lime, peso_lime = esp.as_list()[0]
+    print(f"Feature più influente (LIME): {feat_lime}")
+
+    plt.figure()
+    esp.as_pyplot_figure()
+    plt.title(f"LIME - {nome} (Istanza {indice})")
+    plt.tight_layout()
+    plt.show()
+
+    # SHAP
+    if nome in ["Random Forest", "XGBoost"]:
+        explainer = shap.TreeExplainer(model)
+        feat_shap, val_shap = shap_local_one_model(explainer, x2d, x, nome)
+        print(frase_shap(feat_shap, val_shap))
+
+
+    elif nome == "Regressione Logistica":
+        coef = model.coef_[0]
+        idx = np.argmax(np.abs(coef))
+        feat_shap = nomi_features[idx]
+        val_shap = coef[idx]
+        
+        print(frase_shap(feat_shap, val_shap))
+
+        print(f"Feature più influente (LogReg): {feat_shap} (coef={val_shap:.4f})")
+
+        # REPORT INTERPRETABILITÀ LOGISTICA
+        odds = np.exp(coef[idx])
+        effetto = "aumenta" if coef[idx] > 0 else "riduce"
+        print(f"Interpretazione LogReg: la feature '{feat_shap}' {effetto} la probabilità di licenziamento (odds ratio={odds:.3f}).")
+
+    # Frase naturale
+    print(interpretazione(pred, feat_shap, val_shap, nome))
