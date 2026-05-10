@@ -543,24 +543,11 @@ plt.title("Confronto F1 dei modelli nelle 3 configurazioni di feature")
 plt.legend()
 plt.tight_layout()
 plt.show()
-
 # ========================================================================
 # 15. ANALISI COMPLETA DI UN DIPENDENTE CON SHAP + LIME + NATURAL LANGUAGE
+# ========================================================================
 
-indice = int(input(f"\nInserisci l'indice del dipendente da analizzare (0 - {len(X_test_np)-1}): "))
-
-x = X_test_scalati[indice]
-x2d = X_test_scalati[indice:indice+1]
-y_true = int(y_test_np[indice])
-
-print("\n============================================================")
-print(f" ANALISI COMPLETA ISTANZA {indice}  (Classe reale: {'Licenziato' if y_true else 'Non licenziato'})")
-print("============================================================\n")
-
-
-# ------------------------------------------------------------------------
-# FUNZIONI DI SUPPORTO
-# ------------------------------------------------------------------------
+# ------------ FUNZIONI DI SUPPORTO -------------------------------------
 
 def interpretazione(predizione, feature, valore, modello):
     stato = "Licenziato" if predizione == 1 else "Non licenziato"
@@ -578,29 +565,30 @@ def pred_fn_sklearn(model):
     ])
 
 
+def predici_probabilita_lime(x_numpy):
+    modello.eval()
+    with torch.no_grad():
+        x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
+        logits = modello(x_tensor)
+        prob1 = torch.sigmoid(logits).numpy()
+        prob0 = 1 - prob1
+        return np.hstack((prob0, prob1))
+
+
 def normalizza_shap_local(ex):
     vals = ex.values
 
-    # (1, n_features, 2)
     if vals.ndim == 3 and vals.shape[-1] == 2:
         vals = vals[:, :, 1][0]
-
-    # (n_features, 2)
     elif vals.ndim == 2 and vals.shape[-1] == 2:
         vals = vals[:, 1]
-
-    # (1, n_features)
     elif vals.ndim == 2 and vals.shape[0] == 1:
         vals = vals[0]
-
-    # (n_features,)
     elif vals.ndim == 1:
         pass
-
     else:
         raise ValueError(f"Formato SHAP locale non gestito: {vals.shape}")
 
-    # Base values sempre scalare
     base = ex.base_values
     if isinstance(base, np.ndarray):
         base = float(np.mean(base))
@@ -608,26 +596,48 @@ def normalizza_shap_local(ex):
     return vals, base
 
 
-def shap_local_one_model(explainer, x2d, x, name):
+def shap_local(explainer, x2d, x, feature_names, title):
     ex = explainer(x2d)
     vals, base = normalizza_shap_local(ex)
+
     idx = np.argmax(np.abs(vals))
-    feat = nomi_features[idx]
-    val = vals[idx]
+    feat = feature_names[idx]
+    val = float(vals[idx])
 
     explanation = shap.Explanation(
         values=vals,
         base_values=base,
         data=x,
-        feature_names=nomi_features
+        feature_names=feature_names
     )
 
     shap.plots.waterfall(explanation, show=False)
-    plt.title(f"SHAP - {name} (Istanza {indice})")
+    plt.title(title)
     plt.tight_layout()
     plt.show()
 
     return feat, val
+
+
+def lime_local(explainer_lime, x, predict_fn, title):
+    exp = explainer_lime.explain_instance(x, predict_fn, num_features=10)
+    feat, peso = exp.as_list()[0]
+
+    plt.figure()
+    exp.as_pyplot_figure()
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+    return feat, peso
+
+
+def frase_shap(feature, valore):
+    direzione = "aumenta" if valore > 0 else "riduce"
+    return f"Secondo SHAP la variabile **{feature}** è quella più influente e {direzione} la probabilità di licenziamento."
+
+
+# ------------ EXPLAINER LIME (unico per tutti i modelli) ------------------------
 
 explainer_lime = lime.lime_tabular.LimeTabularExplainer(
     training_data=X_train_scalati,
@@ -637,97 +647,103 @@ explainer_lime = lime.lime_tabular.LimeTabularExplainer(
     random_state=42
 )
 
-def predici_probabilita_lime(x_numpy):
-    modello.eval()
-    with torch.no_grad():
-        x_tensor = torch.tensor(x_numpy, dtype=torch.float32)
-        logits = modello(x_tensor)
-        prob1 = torch.sigmoid(logits).numpy()
-        prob0 = 1 - prob1
-        return np.hstack((prob0, prob1))
-    
-def frase_shap(feature, valore):
-    direzione = "aumenta" if valore > 0 else "riduce"
-    return f"Feature più influente(SHAP) **{feature}** è quella con l’impatto maggiore e {direzione} la probabilità di licenziamento."
+# ------------ INPUT UTENTE ------------------------------------------------------
+
+indice = int(input(f"\nInserisci l'indice del dipendente da analizzare (0 - {len(X_test_np)-1}): "))
+
+x = X_test_scalati[indice]
+x2d = X_test_scalati[indice:indice+1]
+y_true = int(y_test_np[indice])
+
+print("\n============================================================")
+print(f" ANALISI COMPLETA ISTANZA {indice}  (Classe reale: {'Licenziato' if y_true else 'Non licenziato'})")
+print("============================================================\n")
 
 
+# ========================================================================
+# 16. MODELLO 1 - RETE NEURALE
+# ========================================================================
 
-
-# ------------------------------------------------------------------------
-# REPORT FINALE
-# 1) RETE NEURALE
-print("\n================= RETE NEURALE =================")
+print("\n================= RETE NEURALE =================\n")
 
 modello.eval()
 with torch.no_grad():
     prob = torch.sigmoid(modello(torch.tensor(x2d, dtype=torch.float32))).item()
 pred = int(prob > 0.5)
 
-print(f"Predizione: {'Licenziato' if pred else 'Non licenziato'}  (prob={prob:.4f})")
+print(f"Predizione: {'Licenziato' if pred else 'Non licenziato'} (prob={prob:.4f})")
 
 # LIME
-esp_nn = explainer_lime.explain_instance(x, predici_probabilita_lime, num_features=10)
-feat_lime_nn, peso_lime_nn = esp_nn.as_list()[0]
-print(f"Feature più influente (LIME): {feat_lime_nn}")
+feat_lime, peso_lime = lime_local(
+    explainer_lime,
+    x,
+    predici_probabilita_lime,
+    f"LIME - Rete Neurale (Istanza {indice})"
+)
+print(f"Feature più influente (LIME): {feat_lime}")
 
-plt.figure()
-esp_nn.as_pyplot_figure()
-plt.title(f"LIME - NN (Istanza {indice})")
-plt.tight_layout()
-plt.show()
-
-# SHAP NN
+# SHAP
 explainer_nn = shap.Explainer(predici_probabilita_shap, background, feature_names=nomi_features)
-feat_shap_nn, val_shap_nn = shap_local_one_model(explainer_nn, x2d, x, "Rete Neurale")
+feat_shap, val_shap = shap_local(
+    explainer_nn,
+    x2d,
+    x,
+    nomi_features,
+    f"SHAP - Rete Neurale (Istanza {indice})"
+)
+print(frase_shap(feat_shap, val_shap))
+print(interpretazione(pred, feat_shap, val_shap, "Rete Neurale"))
 
-print(frase_shap(feat_shap_nn, val_shap_nn))
-print(interpretazione(pred, feat_shap_nn, val_shap_nn, "Rete Neurale"))
 
+# ========================================================================
+# 17. MODELLI SKLEARN: LOGREG, RF, XGB
+# ========================================================================
 
-
-# ------------------------------------------------------------------------
-# REPORT FINALE
-# 2) ALTRI MODELLI (LogReg, RF, XGB)
 for nome, model in modelli_tradizionali.items():
-    print(f"\n================= {nome.upper()} =================")
+    print(f"\n================= {nome.upper()} =================\n")
 
     # Predizione
     prob = model.predict_proba(x2d)[0][1]
     pred = int(prob > 0.5)
-    print(f"Predizione: {'Licenziato' if pred else 'Non licenziato'}  (prob={prob:.4f})")
+
+    print(f"Predizione: {'Licenziato' if pred else 'Non licenziato'} (prob={prob:.4f})")
 
     # LIME
-    esp = explainer_lime.explain_instance(x, pred_fn_sklearn(model), num_features=10)
-    feat_lime, peso_lime = esp.as_list()[0]
+    feat_lime, peso_lime = lime_local(
+        explainer_lime,
+        x,
+        pred_fn_sklearn(model),
+        f"LIME - {nome} (Istanza {indice})"
+    )
     print(f"Feature più influente (LIME): {feat_lime}")
-
-    plt.figure()
-    esp.as_pyplot_figure()
-    plt.title(f"LIME - {nome} (Istanza {indice})")
-    plt.tight_layout()
-    plt.show()
 
     # SHAP
     if nome in ["Random Forest", "XGBoost"]:
         explainer = shap.TreeExplainer(model)
-        feat_shap, val_shap = shap_local_one_model(explainer, x2d, x, nome)
+        feat_shap, val_shap = shap_local(
+            explainer,
+            x2d,
+            x,
+            nomi_features,
+            f"SHAP - {nome} (Istanza {indice})"
+        )
         print(frase_shap(feat_shap, val_shap))
-
 
     elif nome == "Regressione Logistica":
         coef = model.coef_[0]
         idx = np.argmax(np.abs(coef))
         feat_shap = nomi_features[idx]
         val_shap = coef[idx]
-        
+
+        print(f"Feature più influente (SHAP white-box): {feat_shap} (coef={val_shap:.4f})")
         print(frase_shap(feat_shap, val_shap))
 
-        print(f"Feature più influente (LogReg): {feat_shap} (coef={val_shap:.4f})")
-
-        # REPORT INTERPRETABILITÀ LOGISTICA
+        # Interpretabilità LogReg
         odds = np.exp(coef[idx])
         effetto = "aumenta" if coef[idx] > 0 else "riduce"
         print(f"Interpretazione LogReg: la feature '{feat_shap}' {effetto} la probabilità di licenziamento (odds ratio={odds:.3f}).")
 
-    # Frase naturale
+    # Frase finale
     print(interpretazione(pred, feat_shap, val_shap, nome))
+
+print("\nAnalisi completa terminata.\n")
