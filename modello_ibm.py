@@ -246,7 +246,7 @@ plt.tight_layout()
 plt.show()
 
 # ==========================================
-# 7. EXPLAINABLE AI: SHAP
+# 7. EXPLAINABLE AI: SHAP GLOBALE PER TUTTI I MODELLI
 
 print("\nCalcolo dei valori SHAP in corso...")
 
@@ -329,19 +329,18 @@ for idx in indici_top:
     
     res = {n: f(y_test_np, p_osc, **({'zero_division':0} if n!='Accuracy' else {})) for n, f in metriche.items()}
 # ========================================================================
-# 9. FUNZIONE PER NORMALIZZARE L’OUTPUT DI SHAP 
-# ========================================================================
+# FUNZIONE PER NORMALIZZARE L’OUTPUT DI SHAP 
+
 
 def normalizza_shap_output(shap_vals):
-    import numpy as np
-
-    # Caso 1: lista → significa modello binario → usiamo la classe 1
+    
+    # Caso 1: lista → significa modello binario → USARE la classe 1
     if isinstance(shap_vals, list):
         return np.array(shap_vals[1])
 
     shap_vals = np.array(shap_vals)
 
-    # Caso 2: array 3D (n, f, 2) → prendiamo solo la colonna della classe 1
+    # Caso 2: array 3D (n, f, 2) → prendere solo la colonna della classe 1
     if shap_vals.ndim == 3:
         return shap_vals[:, :, 1]
 
@@ -353,8 +352,7 @@ def normalizza_shap_output(shap_vals):
 
 
 # ========================================================================
-# 10. SHAP PER TUTTI I MODELLI
-# ========================================================================
+# 8. SHAP PER TUTTI I MODELLI
 
 print("\n=== Calcolo SHAP per tutti i modelli ===")
 
@@ -398,8 +396,7 @@ for nome, model_corr in modelli_addestrati.items():
 
 
 # ========================================================================
-# 11. CONFRONTO TOP-FEATURE TRA I MODELLI
-# ========================================================================
+# 9. CONFRONTO TOP-FEATURE TRA I MODELLI
 
 print("\n=== Confronto delle TOP 10 features tra modelli ===\n")
 
@@ -414,8 +411,7 @@ for nome, sv in shap_values_modelli.items():
 
 
 # ========================================================================
-# 12. FEATURE ABLATION 
-# ========================================================================
+# 10. FEATURE ABLATION 
 
 print("\n=== Feature Ablation  ===")
 
@@ -472,14 +468,15 @@ for feat in top5_comuni:
     idx = nomi_features.index(feat)
     X_train_top5[:, idx] = X_train_scalati[:, idx]
     X_test_top5[:, idx] = X_test_scalati[:, idx]
+    
 # ========================================================================
-# 16. FUNZIONE PER VALUTARE NN + MODELLI SKLEARN
-# ========================================================================
+# 11. FUNZIONE PER VALUTARE NN + MODELLI SKLEARN
+
 def valuta_modelli_tutti(Xtr, Xts, ytr=y_train_np, yts=y_test_np):
     risultati = []
-    # ----------------------------------------------------------
-    # 1) RETE NEURALE (usa il modello già addestrato!)
-    # ----------------------------------------------------------
+
+    # 1) RETE NEURALE 
+
     modello.eval()
     with torch.no_grad():
         logits = modello(torch.tensor(Xts, dtype=torch.float32))
@@ -491,9 +488,9 @@ def valuta_modelli_tutti(Xtr, Xts, ytr=y_train_np, yts=y_test_np):
         "Recall": recall_score(yts, preds_nn, zero_division=0),
         "F1": f1_score(yts, preds_nn, zero_division=0)
     })
-    # ----------------------------------------------------------
+
     # 2) MODELLI SKLEARN
-    # ----------------------------------------------------------
+
     for nome, modello_base in modelli_tradizionali.items():
         modello_new = copy.deepcopy(modello_base)
         modello_new.fit(Xtr, ytr)
@@ -507,8 +504,8 @@ def valuta_modelli_tutti(Xtr, Xts, ytr=y_train_np, yts=y_test_np):
         })
     return pd.DataFrame(risultati)
 # ========================================================================
-# 17. VALUTAZIONE SU TUTTI E 3 I DATASET
-# ========================================================================
+# 12. VALUTAZIONE SU TUTTI E 3 I DATASET
+
 print("\n=== Dataset COMPLETO ===")
 ris_completo = valuta_modelli_tutti(X_train_completo, X_test_completo)
 print(ris_completo)
@@ -518,9 +515,10 @@ print(ris_no3)
 print("\n=== Dataset SOLO TOP 5 (altre feature = 0) ===")
 ris_top5 = valuta_modelli_tutti(X_train_top5, X_test_top5)
 print(ris_top5)
+
 # ========================================================================
-# 18. TABELLA FINALE DI CONFRONTO
-# ========================================================================
+# 13. TABELLA FINALE DI CONFRONTO
+
 tabella_finale = pd.concat([
     ris_completo.assign(Dataset="Completo"),
     ris_no3.assign(Dataset="Senza Top 3"),
@@ -528,9 +526,10 @@ tabella_finale = pd.concat([
 ], ignore_index=True)
 print("\n=== TABELLA COMPLETA DI CONFRONTO (NN + 3 MODELLI) ===")
 print(tabella_finale)
+
 # ========================================================================
-# 19. GRAFICO COMPARATIVO (solo F1)
-# ========================================================================
+# 14. GRAFICO COMPARATIVO (solo F1)
+
 plt.figure(figsize=(12,6))
 unique_models = tabella_finale["Modello"].unique()
 x = np.arange(len(unique_models))
@@ -546,8 +545,7 @@ plt.tight_layout()
 plt.show()
 
 # ========================================================================
-# 30. ANALISI COMPLETA DI UN DIPENDENTE CON SHAP + LIME + NATURAL LANGUAGE
-# ========================================================================
+# 15. ANALISI COMPLETA DI UN DIPENDENTE CON SHAP + LIME + NATURAL LANGUAGE
 
 indice = int(input(f"\nInserisci l'indice del dipendente da analizzare (0 - {len(X_test_np)-1}): "))
 
@@ -630,6 +628,7 @@ def shap_local_one_model(explainer, x2d, x, name):
     plt.show()
 
     return feat, val
+
 explainer_lime = lime.lime_tabular.LimeTabularExplainer(
     training_data=X_train_scalati,
     feature_names=nomi_features,
@@ -655,8 +654,8 @@ def frase_shap(feature, valore):
 
 
 # ------------------------------------------------------------------------
+# REPORT FINALE
 # 1) RETE NEURALE
-# ------------------------------------------------------------------------
 print("\n================= RETE NEURALE =================")
 
 modello.eval()
@@ -687,8 +686,8 @@ print(interpretazione(pred, feat_shap_nn, val_shap_nn, "Rete Neurale"))
 
 
 # ------------------------------------------------------------------------
+# REPORT FINALE
 # 2) ALTRI MODELLI (LogReg, RF, XGB)
-# ------------------------------------------------------------------------
 for nome, model in modelli_tradizionali.items():
     print(f"\n================= {nome.upper()} =================")
 
